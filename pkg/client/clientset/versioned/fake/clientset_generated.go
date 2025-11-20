@@ -28,6 +28,8 @@ import (
 	clientset "knative.dev/serving/pkg/client/clientset/versioned"
 	autoscalingv1alpha1 "knative.dev/serving/pkg/client/clientset/versioned/typed/autoscaling/v1alpha1"
 	fakeautoscalingv1alpha1 "knative.dev/serving/pkg/client/clientset/versioned/typed/autoscaling/v1alpha1/fake"
+	rtresourcev1 "knative.dev/serving/pkg/client/clientset/versioned/typed/rtresource/v1"
+	fakertresourcev1 "knative.dev/serving/pkg/client/clientset/versioned/typed/rtresource/v1/fake"
 	servingv1 "knative.dev/serving/pkg/client/clientset/versioned/typed/serving/v1"
 	fakeservingv1 "knative.dev/serving/pkg/client/clientset/versioned/typed/serving/v1/fake"
 	servingv1beta1 "knative.dev/serving/pkg/client/clientset/versioned/typed/serving/v1beta1"
@@ -95,6 +97,11 @@ var (
 // AutoscalingV1alpha1 retrieves the AutoscalingV1alpha1Client
 func (c *Clientset) AutoscalingV1alpha1() autoscalingv1alpha1.AutoscalingV1alpha1Interface {
 	return &fakeautoscalingv1alpha1.FakeAutoscalingV1alpha1{Fake: &c.Fake}
+}
+
+// RtresourceV1 retrieves the RtresourceV1Client
+func (c *Clientset) RtresourceV1() rtresourcev1.RtresourceV1Interface {
+	return &fakertresourcev1.FakeRtresourceV1{Fake: &c.Fake}
 }
 
 // ServingV1 retrieves the ServingV1Client

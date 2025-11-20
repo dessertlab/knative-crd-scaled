@@ -44,6 +44,7 @@ import (
 	"knative.dev/pkg/controller"
 	"knative.dev/pkg/logging"
 	pkgreconciler "knative.dev/pkg/reconciler"
+	"knative.dev/serving/pkg/apis/autoscaling"
 	v1 "knative.dev/serving/pkg/apis/serving/v1"
 	palisters "knative.dev/serving/pkg/client/listers/autoscaling/v1alpha1"
 	"knative.dev/serving/pkg/reconciler/revision/config"
@@ -158,24 +159,24 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, rev *v1.Revision) pkgrec
 	switch hasCriticality {
 	case false:
 		for _, phase := range []func(context.Context, *v1.Revision) error{
-		c.reconcileDeployment,
-		c.reconcileImageCache,
-		c.reconcilePA,
-	} {
-		if err := phase(ctx, rev); err != nil {
-			return err
+			c.reconcileDeployment,
+			c.reconcileImageCache,
+			c.reconcilePA,
+		} {
+			if err := phase(ctx, rev); err != nil {
+				return err
+			}
 		}
-	}
 	case true:
 		for _, phase := range []func(context.Context, *v1.Revision) error{
-		c.reconcileRTResource,
-		c.reconcileImageCache,
-		c.reconcilePA,
-	} {
-		if err := phase(ctx, rev); err != nil {
-			return err
+			c.reconcileRTResource,
+			c.reconcileImageCache,
+			c.reconcilePA,
+		} {
+			if err := phase(ctx, rev); err != nil {
+				return err
+			}
 		}
-	}
 	}
 	readyAfterReconcile := rev.Status.GetCondition(v1.RevisionConditionReady).IsTrue()
 	if !readyBeforeReconcile && readyAfterReconcile {

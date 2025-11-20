@@ -30,6 +30,7 @@ import (
 	versioned "knative.dev/serving/pkg/client/clientset/versioned"
 	autoscaling "knative.dev/serving/pkg/client/informers/externalversions/autoscaling"
 	internalinterfaces "knative.dev/serving/pkg/client/informers/externalversions/internalinterfaces"
+	rtresource "knative.dev/serving/pkg/client/informers/externalversions/rtresource"
 	serving "knative.dev/serving/pkg/client/informers/externalversions/serving"
 )
 
@@ -256,11 +257,16 @@ type SharedInformerFactory interface {
 	InformerFor(obj runtime.Object, newFunc internalinterfaces.NewInformerFunc) cache.SharedIndexInformer
 
 	Autoscaling() autoscaling.Interface
+	Rtresource() rtresource.Interface
 	Serving() serving.Interface
 }
 
 func (f *sharedInformerFactory) Autoscaling() autoscaling.Interface {
 	return autoscaling.New(f, f.namespace, f.tweakListOptions)
+}
+
+func (f *sharedInformerFactory) Rtresource() rtresource.Interface {
+	return rtresource.New(f, f.namespace, f.tweakListOptions)
 }
 
 func (f *sharedInformerFactory) Serving() serving.Interface {

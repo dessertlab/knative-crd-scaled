@@ -4,6 +4,9 @@
 <a href="#autoscaling.internal.knative.dev%2fv1alpha1">autoscaling.internal.knative.dev/v1alpha1</a>
 </li>
 <li>
+<a href="#rtresource.example.com%2fv1">rtresource.example.com/v1</a>
+</li>
+<li>
 <a href="#serving.knative.dev%2fv1">serving.knative.dev/v1</a>
 </li>
 <li>
@@ -703,6 +706,308 @@ Used when the reachability cannot be determined, eg. during activation.</p>
 <td><p>ReachabilityUnreachable means the <code>ScaleTarget</code> is not reachable, ie. it does not have an active route.</p>
 </td>
 </tr></tbody>
+</table>
+<hr/>
+<h2 id="rtresource.example.com/v1">rtresource.example.com/v1</h2>
+<div>
+<p>Package v1 contains API Schema definitions for the rtresource v1 API group.</p>
+</div>
+Resource Types:
+<ul><li>
+<a href="#rtresource.example.com/v1.RTResource">RTResource</a>
+</li></ul>
+<h3 id="rtresource.example.com/v1.RTResource">RTResource
+</h3>
+<div>
+<p>RTResource is a custom resource representing a real-time application.
+Users can use RTResources instead of Deployments.
+The use of such resources allow to orchestrate applications prioritizig them
+according to their criticality.
+Kubernetes will prioritize these applications&rsquo; deployment requests with a custom controller
+designed to handle each application with a kernel thread scheduled with FIFO Linux priority
+assigned according to the Criticality field.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>apiVersion</code><br/>
+string</td>
+<td>
+<code>
+rtresource.example.com/v1
+</code>
+</td>
+</tr>
+<tr>
+<td>
+<code>kind</code><br/>
+string
+</td>
+<td><code>RTResource</code></td>
+</tr>
+<tr>
+<td>
+<code>metadata</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#objectmeta-v1-meta">
+Kubernetes meta/v1.ObjectMeta
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+Refer to the Kubernetes API documentation for the fields of the
+<code>metadata</code> field.
+</td>
+</tr>
+<tr>
+<td>
+<code>spec</code><br/>
+<em>
+<a href="#rtresource.example.com/v1.RTResourceSpec">
+RTResourceSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<br/>
+<br/>
+<table>
+<tr>
+<td>
+<code>namespace</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Namespace where the resource will be deployed</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>replicas</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Number of desired replicas. This is a pointer to distinguish between explicit
+zero and not specified.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>selector</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#labelselector-v1-meta">
+Kubernetes meta/v1.LabelSelector
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Selector is a label identifying the pods managed by this resource.
+It must match the pod template&rsquo;s labels.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>criticality</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<p>Criticality level (1-80)</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>template</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#podtemplatespec-v1-core">
+Kubernetes core/v1.PodTemplateSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Template describes the pods that will be created.</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+<tr>
+<td>
+<code>status</code><br/>
+<em>
+<a href="#rtresource.example.com/v1.RTResourceStatus">
+RTResourceStatus
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rtresource.example.com/v1.RTResourceConditionType">RTResourceConditionType
+(<code>string</code> alias)</h3>
+<div>
+<p>RTResourceConditionType is a valid value for RTResourceCondition.Type</p>
+</div>
+<h3 id="rtresource.example.com/v1.RTResourceSpec">RTResourceSpec
+</h3>
+<p>
+(<em>Appears on:</em><a href="#rtresource.example.com/v1.RTResource">RTResource</a>)
+</p>
+<div>
+<p>RTResourceSpec holds the desired state of the RTResource (from the client).</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>namespace</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Namespace where the resource will be deployed</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>replicas</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Number of desired replicas. This is a pointer to distinguish between explicit
+zero and not specified.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>selector</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#labelselector-v1-meta">
+Kubernetes meta/v1.LabelSelector
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Selector is a label identifying the pods managed by this resource.
+It must match the pod template&rsquo;s labels.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>criticality</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<p>Criticality level (1-80)</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>template</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#podtemplatespec-v1-core">
+Kubernetes core/v1.PodTemplateSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Template describes the pods that will be created.</p>
+</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rtresource.example.com/v1.RTResourceStatus">RTResourceStatus
+</h3>
+<p>
+(<em>Appears on:</em><a href="#rtresource.example.com/v1.RTResource">RTResource</a>)
+</p>
+<div>
+<p>RTResourceStatus is the status for a RTResource resource</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>Status</code><br/>
+<em>
+<a href="https://pkg.go.dev/knative.dev/pkg/apis/duck/v1#Status">
+knative.dev/pkg/apis/duck/v1.Status
+</a>
+</em>
+</td>
+<td>
+<p>
+(Members of <code>Status</code> are embedded into this type.)
+</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>desiredReplicas</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DesiredReplicas is the desired number of replicas</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>replicas</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Replicas is the actual number of ready replicas observed by the autoscaler</p>
+</td>
+</tr>
+</tbody>
 </table>
 <hr/>
 <h2 id="serving.knative.dev/v1">serving.knative.dev/v1</h2>

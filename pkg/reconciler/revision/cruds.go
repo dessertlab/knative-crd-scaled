@@ -55,7 +55,7 @@ func (c *Reconciler) createRTResource(ctx context.Context, rev *v1.Revision) (*r
 		return nil, fmt.Errorf("failed to make rtresource: %w", err)
 	}
 
-	return c.client.RtgroupV1().RTResources(rt.Namespace).Create(ctx, rt, metav1.CreateOptions{})
+	return c.client.RtresourceV1().RTResources(rt.Namespace).Create(ctx, rt, metav1.CreateOptions{})
 }
 
 func (c *Reconciler) checkAndUpdateDeployment(ctx context.Context, rev *v1.Revision, have *appsv1.Deployment) (*appsv1.Deployment, error) {
@@ -133,8 +133,8 @@ func (c *Reconciler) checkAndUpdateRTResource(ctx context.Context, rev *v1.Revis
 
 	// Carry over new labels.
 	desiredRTResource.Labels = kmeta.UnionMaps(rtresource.Labels, desiredRTResource.Labels)
-	
-	r, err := c.client.RtgroupV1().RTResources(rtresource.Namespace).Update(ctx, desiredRTResource, metav1.UpdateOptions{})
+
+	r, err := c.client.RtresourceV1().RTResources(rtresource.Namespace).Update(ctx, desiredRTResource, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
 	}

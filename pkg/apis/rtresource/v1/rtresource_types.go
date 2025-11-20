@@ -36,12 +36,12 @@ import (
 // designed to handle each application with a kernel thread scheduled with FIFO Linux priority
 // assigned according to the Criticality field.
 type RTResource struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// +optional
-	Spec   RTResourceSpec   `json:"spec"`
+	Spec RTResourceSpec `json:"spec"`
 
 	// +optional
 	Status RTResourceStatus `json:"status,omitempty"`
@@ -92,10 +92,10 @@ type RTResourceConditionType string
 
 const (
 	// RTResourceConditionReady is set when the resource related application Pods are running
-	RTResourceConditionReady = apis.ConditionReady
+	RTResourceConditionReady apis.ConditionType = apis.ConditionReady
 
 	// RTResourceConditionProgressing is set when the resource is being deployed
-	RTResourceConditionProgressing RTResourceConditionType = "Progressing"
+	RTResourceConditionProgressing apis.ConditionType = "Progressing"
 )
 
 // IsRTResourceCondition returns true if the given ConditionType is a RTResourceCondition.

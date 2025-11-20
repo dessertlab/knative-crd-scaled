@@ -24,7 +24,8 @@ import (
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 	v1alpha1 "knative.dev/serving/pkg/apis/autoscaling/v1alpha1"
-	v1 "knative.dev/serving/pkg/apis/serving/v1"
+	v1 "knative.dev/serving/pkg/apis/rtresource/v1"
+	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
 	v1beta1 "knative.dev/serving/pkg/apis/serving/v1beta1"
 )
 
@@ -60,14 +61,18 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	case v1alpha1.SchemeGroupVersion.WithResource("podautoscalers"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Autoscaling().V1alpha1().PodAutoscalers().Informer()}, nil
 
+		// Group=rtresource.example.com, Version=v1
+	case v1.SchemeGroupVersion.WithResource("rtresources"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Rtresource().V1().RTResources().Informer()}, nil
+
 		// Group=serving.knative.dev, Version=v1
-	case v1.SchemeGroupVersion.WithResource("configurations"):
+	case servingv1.SchemeGroupVersion.WithResource("configurations"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Serving().V1().Configurations().Informer()}, nil
-	case v1.SchemeGroupVersion.WithResource("revisions"):
+	case servingv1.SchemeGroupVersion.WithResource("revisions"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Serving().V1().Revisions().Informer()}, nil
-	case v1.SchemeGroupVersion.WithResource("routes"):
+	case servingv1.SchemeGroupVersion.WithResource("routes"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Serving().V1().Routes().Informer()}, nil
-	case v1.SchemeGroupVersion.WithResource("services"):
+	case servingv1.SchemeGroupVersion.WithResource("services"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Serving().V1().Services().Informer()}, nil
 
 		// Group=serving.knative.dev, Version=v1beta1

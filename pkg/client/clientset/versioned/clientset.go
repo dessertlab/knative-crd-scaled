@@ -26,6 +26,7 @@ import (
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 	autoscalingv1alpha1 "knative.dev/serving/pkg/client/clientset/versioned/typed/autoscaling/v1alpha1"
+	rtresourcev1 "knative.dev/serving/pkg/client/clientset/versioned/typed/rtresource/v1"
 	servingv1 "knative.dev/serving/pkg/client/clientset/versioned/typed/serving/v1"
 	servingv1beta1 "knative.dev/serving/pkg/client/clientset/versioned/typed/serving/v1beta1"
 )
@@ -33,6 +34,7 @@ import (
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	AutoscalingV1alpha1() autoscalingv1alpha1.AutoscalingV1alpha1Interface
+	RtresourceV1() rtresourcev1.RtresourceV1Interface
 	ServingV1() servingv1.ServingV1Interface
 	ServingV1beta1() servingv1beta1.ServingV1beta1Interface
 }
@@ -41,6 +43,7 @@ type Interface interface {
 type Clientset struct {
 	*discovery.DiscoveryClient
 	autoscalingV1alpha1 *autoscalingv1alpha1.AutoscalingV1alpha1Client
+	rtresourceV1        *rtresourcev1.RtresourceV1Client
 	servingV1           *servingv1.ServingV1Client
 	servingV1beta1      *servingv1beta1.ServingV1beta1Client
 }
@@ -48,6 +51,11 @@ type Clientset struct {
 // AutoscalingV1alpha1 retrieves the AutoscalingV1alpha1Client
 func (c *Clientset) AutoscalingV1alpha1() autoscalingv1alpha1.AutoscalingV1alpha1Interface {
 	return c.autoscalingV1alpha1
+}
+
+// RtresourceV1 retrieves the RtresourceV1Client
+func (c *Clientset) RtresourceV1() rtresourcev1.RtresourceV1Interface {
+	return c.rtresourceV1
 }
 
 // ServingV1 retrieves the ServingV1Client
@@ -108,6 +116,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
+	cs.rtresourceV1, err = rtresourcev1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 	cs.servingV1, err = servingv1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
@@ -138,6 +150,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.autoscalingV1alpha1 = autoscalingv1alpha1.New(c)
+	cs.rtresourceV1 = rtresourcev1.New(c)
 	cs.servingV1 = servingv1.New(c)
 	cs.servingV1beta1 = servingv1beta1.New(c)
 

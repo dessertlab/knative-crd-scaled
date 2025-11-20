@@ -77,6 +77,11 @@ ${KNATIVE_CODEGEN_PKG}/hack/generate-knative.sh "injection" \
   "serving:v1 serving:v1beta1 autoscaling:v1alpha1" \
   --go-header-file "${boilerplate}"
 
+${KNATIVE_CODEGEN_PKG}/hack/generate-knative.sh "injection" \
+  knative.dev/serving/pkg/client knative.dev/serving/pkg/apis \
+  "rtresource:v1" \
+  --go-header-file "${boilerplate}"
+
 # Knative Injection (for cert-manager)
 OUTPUT_PKG="knative.dev/serving/pkg/client/certmanager/injection" \
 ${KNATIVE_CODEGEN_PKG}/hack/generate-knative.sh "injection" \
