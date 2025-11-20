@@ -60,7 +60,8 @@ func ValidateAnnotations(ctx context.Context, config *autoscalerconfig.Config, a
 		Also(validateScaleDownDelay(anns)).
 		Also(validateMetric(config, anns)).
 		Also(validateAlgorithm(anns)).
-		Also(validateInitialScale(config, anns))
+		Also(validateInitialScale(config, anns)).
+		Also(validateCriticalityLevel(anns))
 }
 
 func validateClass(m map[string]string) *apis.FieldError {
@@ -271,6 +272,19 @@ func validateInitialScale(config *autoscalerconfig.Config, m map[string]string) 
 			return apis.ErrInvalidValue(v, k+" must be greater than 0")
 		} else if !config.AllowZeroInitialScale && initScaleInt == 0 {
 			return apis.ErrInvalidValue(v, k+"=0 not allowed by cluster")
+		}
+	}
+	return nil
+}
+
+func validateCriticalityLevel(m map[string]string) *apis.FieldError {
+	if k, v, ok := ApplicationCriticalityLevelAnnotation.Get(m); ok {
+		level, err := strconv.ParseInt(v, 10, 32)
+		if err != nil {
+			return apis.ErrInvalidValue(v, k)
+		}
+		if level < 1 || level > 80 {
+			return apis.ErrOutOfBoundsValue(v, 1, 80, k)
 		}
 	}
 	return nil

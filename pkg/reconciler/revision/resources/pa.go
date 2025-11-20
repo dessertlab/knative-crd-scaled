@@ -24,12 +24,30 @@ import (
 	"knative.dev/pkg/apis"
 	"knative.dev/pkg/kmeta"
 	autoscalingv1alpha1 "knative.dev/serving/pkg/apis/autoscaling/v1alpha1"
+	rtresourcev1 "knative.dev/serving/pkg/apis/rtresource/v1"
 	v1 "knative.dev/serving/pkg/apis/serving/v1"
 	"knative.dev/serving/pkg/reconciler/revision/resources/names"
 )
 
 // MakePA makes a Knative Pod Autoscaler resource from a revision.
-func MakePA(rev *v1.Revision, deployment *appsv1.Deployment) *autoscalingv1alpha1.PodAutoscaler {
+func MakePA(rev *v1.Revision, deployment *appsv1.Deployment, rtresource *rtresourcev1.RTResource, targetKind string) *autoscalingv1alpha1.PodAutoscaler {
+	var apiVersion, kind, name string
+
+	switch targetKind {
+	case "Deployment":
+		apiVersion = "apps/v1"
+        kind = targetKind
+        name = names.Deployment(rev)
+	case "RTResource":
+		apiVersion = "rtgroup.critical.com/v1"
+        kind = targetKind
+        name = names.RTResource(rev)
+	default:
+		apiVersion = "apps/v1"
+        kind = targetKind
+        name = names.Deployment(rev)
+	}
+
 	return &autoscalingv1alpha1.PodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            names.PA(rev),
@@ -41,17 +59,17 @@ func MakePA(rev *v1.Revision, deployment *appsv1.Deployment) *autoscalingv1alpha
 		Spec: autoscalingv1alpha1.PodAutoscalerSpec{
 			ContainerConcurrency: rev.Spec.GetContainerConcurrency(),
 			ScaleTargetRef: corev1.ObjectReference{
-				APIVersion: "apps/v1",
-				Kind:       "Deployment",
-				Name:       names.Deployment(rev),
+				APIVersion: apiVersion,
+				Kind:       kind,
+				Name:       name,
 			},
 			ProtocolType: rev.GetProtocol(),
-			Reachability: reachability(rev, deployment),
+			Reachability: reachability(rev, deployment, rtresource, targetKind),
 		},
 	}
 }
 
-func reachability(rev *v1.Revision, deployment *appsv1.Deployment) autoscalingv1alpha1.ReachabilityType {
+func reachability(rev *v1.Revision, deployment *appsv1.Deployment, rtresource *rtresourcev1.RTResource, targetKind string) autoscalingv1alpha1.ReachabilityType {
 	// check infra failures
 	infraFailure := false
 	for _, cond := range []apis.ConditionType{
@@ -64,10 +82,27 @@ func reachability(rev *v1.Revision, deployment *appsv1.Deployment) autoscalingv1
 		}
 	}
 
-	if infraFailure && deployment != nil && deployment.Spec.Replicas != nil {
+	switch targetKind {
+	case "Deployment":
+		if infraFailure && deployment != nil && deployment.Spec.Replicas != nil {
+			// If we have an infra failure and no ready replicas - then this revision is unreachable
+			if *deployment.Spec.Replicas > 0 && deployment.Status.ReadyReplicas == 0 {
+				return autoscalingv1alpha1.ReachabilityUnreachable
+			}
+		}
+	case "RTResource":
+		if infraFailure && rtresource != nil && rtresource.Spec.Replicas != nil {
 		// If we have an infra failure and no ready replicas - then this revision is unreachable
-		if *deployment.Spec.Replicas > 0 && deployment.Status.ReadyReplicas == 0 {
-			return autoscalingv1alpha1.ReachabilityUnreachable
+			if *rtresource.Spec.Replicas > 0 && rtresource.Status.Replicas == 0 {
+				return autoscalingv1alpha1.ReachabilityUnreachable
+			}
+		}
+	default:
+		if infraFailure && deployment != nil && deployment.Spec.Replicas != nil {
+			// If we have an infra failure and no ready replicas - then this revision is unreachable
+			if *deployment.Spec.Replicas > 0 && deployment.Status.ReadyReplicas == 0 {
+				return autoscalingv1alpha1.ReachabilityUnreachable
+			}
 		}
 	}
 

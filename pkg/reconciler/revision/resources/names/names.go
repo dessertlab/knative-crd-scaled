@@ -23,6 +23,11 @@ func Deployment(rev kmeta.Accessor) string {
 	return kmeta.ChildName(rev.GetName(), "-deployment")
 }
 
+// RTResource returns the RTResource name for the revision RTResource.
+func RTResource(rev kmeta.Accessor) string {
+    return kmeta.ChildName(rev.GetName(), "-rtresource")
+}
+
 // ImageCache returns the precomputed name for the image cache.
 func ImageCache(rev kmeta.Accessor) string {
 	return kmeta.ChildName(rev.GetName(), "-cache")

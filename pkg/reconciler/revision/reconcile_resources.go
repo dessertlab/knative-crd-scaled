@@ -41,6 +41,7 @@ import (
 	"knative.dev/pkg/logging"
 	"knative.dev/pkg/logging/logkey"
 	"knative.dev/serving/pkg/apis/autoscaling"
+	rtresourcev1 "knative.dev/serving/pkg/apis/rtresource/v1"
 	v1 "knative.dev/serving/pkg/apis/serving/v1"
 	"knative.dev/serving/pkg/networking"
 	"knative.dev/serving/pkg/reconciler/revision/config"
@@ -139,6 +140,88 @@ func (c *Reconciler) reconcileDeployment(ctx context.Context, rev *v1.Revision) 
 	return nil
 }
 
+func (c *Reconciler) reconcileRTResource(ctx context.Context, rev *v1.Revision) error {
+	ns := rev.Namespace
+	rtresourceName := resourcenames.RTResource(rev)
+	logger := logging.FromContext(ctx).With(zap.String("rtresource", rtresourceName))
+
+	rtresource, err := c.rtresourceLister.RTResources(ns).Get(rtresourceName)
+	if apierrs.IsNotFound(err) {
+		// RTResource does not exist. Create it.
+		rev.Status.MarkResourcesAvailableUnknown(v1.ReasonDeploying, "")
+		rev.Status.MarkContainerHealthyUnknown(v1.ReasonDeploying, "")
+		if _, err = c.createRTResource(ctx, rev); err != nil {
+			return fmt.Errorf("failed to create rtresource %q: %w", rtresourceName, err)
+		}
+		logger.Infof("Created rtresource %q", rtresourceName)
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("failed to get rtresource %q: %w", rtresourceName, err)
+	} else if !metav1.IsControlledBy(rtresource, rev) {
+		// Surface an error in the revision's status, and return an error.
+		rev.Status.MarkResourcesAvailableFalse(v1.ReasonNotOwned, v1.ResourceNotOwnedMessage("RTResource", rtresourceName))
+		return fmt.Errorf("revision: %q does not own RTResource: %q", rev.Name, rtresourceName)
+	}
+
+	// The rtresource exists, but make sure that it has the shape that we expect.
+	rtresource, err = c.checkAndUpdateRTResource(ctx, rev, rtresource)
+	if err != nil {
+		return fmt.Errorf("failed to update rtresource %q: %w", rtresourceName, err)
+	}
+
+	rev.Status.PropagateRTResourceStatus(&rtresource.Status)
+
+	// If a container keeps crashing (no active pods in the rtresource although we want some)
+	if rtresource.Spec.Replicas != nil && *rtresource.Spec.Replicas > 0 && rtresource.Status.Replicas == 0 {
+		pods, err := c.kubeclient.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
+			LabelSelector: metav1.FormatLabelSelector(rtresource.Spec.Selector),
+			Limit:         1,
+		})
+		if err != nil {
+			logger.Errorw("Error getting pods", zap.Error(err))
+			return nil
+		}
+		if len(pods.Items) > 0 {
+			// Arbitrarily grab the very first pod, as they all should be crashing
+			pod := pods.Items[0]
+
+			// Update the revision status if pod cannot be scheduled (possibly resource constraints)
+			// If pod cannot be scheduled then we expect the container status to be empty.
+			for _, cond := range pod.Status.Conditions {
+				if cond.Type == corev1.PodScheduled && cond.Status == corev1.ConditionFalse {
+					rev.Status.MarkResourcesAvailableFalse(cond.Reason, cond.Message)
+					break
+				}
+			}
+
+			for _, status := range pod.Status.ContainerStatuses {
+				if status.Name != resources.QueueContainerName {
+					if t := status.LastTerminationState.Terminated; t != nil {
+						logger.Infof("marking exiting with: %d/%s", t.ExitCode, t.Message)
+						if t.ExitCode == 0 && t.Message == "" {
+							// In cases where there is no error message, we should still provide some exit message in the status
+							rev.Status.MarkContainerHealthyFalse(v1.ExitCodeReason(t.ExitCode),
+								v1.RevisionContainerExitingMessage("container exited with no error"))
+							break
+						} else {
+							rev.Status.MarkContainerHealthyFalse(v1.ExitCodeReason(t.ExitCode), v1.RevisionContainerExitingMessage(t.Message))
+							break
+						}
+					}
+					// Note: RTResource doesn't have ProgressDeadlineSeconds like Deployment
+					// so we skip the hasDeploymentTimedOut() check
+				}
+			}
+		}
+	}
+
+	if rtresource.Status.Replicas > 0 {
+		rev.Status.MarkContainerHealthyTrue()
+	}
+
+	return nil
+}
+
 func (c *Reconciler) reconcileImageCache(ctx context.Context, rev *v1.Revision) error {
 	logger := logging.FromContext(ctx)
 
@@ -161,21 +244,42 @@ func (c *Reconciler) reconcileImageCache(ctx context.Context, rev *v1.Revision) 
 
 func (c *Reconciler) reconcilePA(ctx context.Context, rev *v1.Revision) error {
 	ns := rev.Namespace
-
-	deploymentName := resourcenames.Deployment(rev)
-	deployment, err := c.deploymentLister.Deployments(ns).Get(deploymentName)
-	if err != nil {
-		return err
-	}
-
 	paName := resourcenames.PA(rev)
 	logger := logging.FromContext(ctx)
 	logger.Info("Reconciling PA: ", paName)
 
+	// Determine which resource type to use based on criticality annotation
+	var deployment *appsv1.Deployment
+	var rtresource *rtresourcev1.RTResource
+	var targetKind string
+
+	hasCriticality := rev.Annotations[autoscaling.ApplicationCriticalityLevelKey] != ""
+
+	switch hasCriticality {
+	// Use Deployment for standard applications
+	case false:
+		deploymentName := resourcenames.Deployment(rev)
+		dep, err := c.deploymentLister.Deployments(ns).Get(deploymentName)
+		if err != nil {
+			return err
+		}
+		deployment = dep
+		targetKind = "Deployment"
+	// Use RTResource for critical real time applications
+	case true:
+		rtresourceName := resourcenames.RTResource(rev)
+		rt, err := c.rtresourceLister.RTResources(ns).Get(rtresourceName)
+		if err != nil {
+			return err
+		}
+		rtresource = rt
+		targetKind = "RTResource"
+	}
+
 	pa, err := c.podAutoscalerLister.PodAutoscalers(ns).Get(paName)
 	if apierrs.IsNotFound(err) {
 		// PA does not exist. Create it.
-		pa, err = c.createPA(ctx, rev, deployment)
+		pa, err = c.createPA(ctx, rev, deployment, rtresource)
 		if err != nil {
 			return fmt.Errorf("failed to create PA %q: %w", paName, err)
 		}
@@ -193,7 +297,7 @@ func (c *Reconciler) reconcilePA(ctx context.Context, rev *v1.Revision) error {
 
 	// Perhaps tha PA spec changed underneath ourselves?
 	// We no longer require immutability, so need to reconcile PA each time.
-	tmpl := resources.MakePA(rev, deployment)
+	tmpl := resources.MakePA(rev, deployment, rtresource, targetKind)
 	logger.Debugf("Desired PASpec: %#v", tmpl.Spec)
 	if !equality.Semantic.DeepEqual(tmpl.Spec, pa.Spec) || annotationsNeedReconcilingForKPA(pa.Annotations, tmpl.Annotations) {
 		want := pa.DeepCopy()

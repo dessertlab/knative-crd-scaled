@@ -39,6 +39,7 @@ import (
 
 	cachinglisters "knative.dev/caching/pkg/client/listers/caching/v1alpha1"
 	networkinglisters "knative.dev/networking/pkg/client/listers/networking/v1alpha1"
+	rtresourcelisters "knative.dev/serving/pkg/client/listers/rtresource/v1"
 
 	"knative.dev/pkg/controller"
 	"knative.dev/pkg/logging"
@@ -65,6 +66,7 @@ type Reconciler struct {
 	podAutoscalerLister palisters.PodAutoscalerLister
 	imageLister         cachinglisters.ImageLister
 	deploymentLister    appsv1listers.DeploymentLister
+	rtresourceLister    rtresourcelisters.RTResourceLister
 	certificateLister   networkinglisters.CertificateLister
 
 	tracker  tracker.Interface
@@ -152,7 +154,10 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, rev *v1.Revision) pkgrec
 		}
 	}
 
-	for _, phase := range []func(context.Context, *v1.Revision) error{
+	hasCriticality := rev.Annotations[autoscaling.ApplicationCriticalityLevelKey] != ""
+	switch hasCriticality {
+	case false:
+		for _, phase := range []func(context.Context, *v1.Revision) error{
 		c.reconcileDeployment,
 		c.reconcileImageCache,
 		c.reconcilePA,
@@ -160,6 +165,17 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, rev *v1.Revision) pkgrec
 		if err := phase(ctx, rev); err != nil {
 			return err
 		}
+	}
+	case true:
+		for _, phase := range []func(context.Context, *v1.Revision) error{
+		c.reconcileRTResource,
+		c.reconcileImageCache,
+		c.reconcilePA,
+	} {
+		if err := phase(ctx, rev); err != nil {
+			return err
+		}
+	}
 	}
 	readyAfterReconcile := rev.Status.GetCondition(v1.RevisionConditionReady).IsTrue()
 	if !readyBeforeReconcile && readyAfterReconcile {

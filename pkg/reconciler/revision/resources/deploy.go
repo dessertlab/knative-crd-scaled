@@ -34,6 +34,7 @@ import (
 	"knative.dev/serving/pkg/reconciler/revision/resources/names"
 
 	appsv1 "k8s.io/api/apps/v1"
+	rtresourcev1 "knative.dev/serving/pkg/apis/rtresource/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -394,6 +395,55 @@ func MakeDeployment(rev *v1.Revision, cfg *config.Config) (*appsv1.Deployment, e
 					MaxUnavailable: &maxUnavailable,
 				},
 			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      labels,
+					Annotations: podAnnotations(rev),
+				},
+				Spec: *podSpec,
+			},
+		},
+	}, nil
+}
+
+// MakeRTResource constructs an RTResource from a revision.
+func MakeRTResource(rev *v1.Revision, cfg *config.Config) (*rtresourcev1.RTResource, error) {
+	podSpec, err := makePodSpec(rev, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create PodSpec: %w", err)
+	}
+
+	replicaCount := cfg.Autoscaler.InitialScale
+	_, ann, found := autoscaling.InitialScaleAnnotation.Get(rev.Annotations)
+	if found {
+		// Ignore errors and no error checking because already validated in webhook.
+		rc, _ := strconv.ParseInt(ann, 10, 32)
+		replicaCount = int32(rc)
+	}
+
+	// Read criticality from annotation, default to 1
+	criticality := int32(1)
+	if critStr, ok := rev.Annotations[autoscaling.ApplicationCriticalityLevelKey]; ok {
+		if crit, err := strconv.ParseInt(critStr, 10, 32); err == nil {
+			criticality = int32(crit)
+		}
+	}
+
+	labels := makeLabels(rev)
+
+	return &rtresourcev1.RTResource{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            names.RTResource(rev),
+			Namespace:       rev.Namespace,
+			Labels:          labels,
+			Annotations:     deploymentAnnotations(rev),
+			OwnerReferences: []metav1.OwnerReference{*kmeta.NewControllerRef(rev)},
+		},
+		Spec: rtresourcev1.RTResourceSpec{
+			Namespace:   rev.Namespace,
+			Replicas:    ptr.Int32(replicaCount),
+			Selector:    makeSelector(rev),
+			Criticality: criticality,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels:      labels,

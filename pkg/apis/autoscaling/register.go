@@ -221,6 +221,12 @@ const (
 	// min-scale value while also preserving the ability to scale to zero.
 	// ActivationScale must be >= 2.
 	ActivationScaleKey = GroupName + "/activation-scale"
+
+	// ApplicationCriticalityLevelKey specifies the criticality level of the application.
+	// The value must be between 1 and 80.
+	// For example,
+	//   autoscaling.knative.dev/application-criticality-level: "50"
+	ApplicationCriticalityLevelKey = GroupName + "/application-criticality-level"
 )
 
 var (
@@ -279,5 +285,8 @@ var (
 	}
 	WindowAnnotation = kmap.KeyPriority{
 		WindowAnnotationKey,
+	}
+	ApplicationCriticalityLevelAnnotation = kmap.KeyPriority{
+		ApplicationCriticalityLevelKey,
 	}
 )

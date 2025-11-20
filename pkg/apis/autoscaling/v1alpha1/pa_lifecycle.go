@@ -179,6 +179,12 @@ func (pa *PodAutoscaler) InitialScale() (int32, bool) {
 	return pa.annotationInt32(autoscaling.InitialScaleAnnotation)
 }
 
+// ApplicationCriticalityLevel returns the criticality level annotation value, or false if not present.
+func (pa *PodAutoscaler) ApplicationCriticalityLevel() (int32, bool) {
+	// The value is validated in the webhook.
+	return pa.annotationInt32(autoscaling.ApplicationCriticalityLevelAnnotation)
+}
+
 // IsReady returns true if the Status condition PodAutoscalerConditionReady
 // is true and the latest spec has been observed.
 func (pa *PodAutoscaler) IsReady() bool {

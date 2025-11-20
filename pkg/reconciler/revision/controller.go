@@ -32,6 +32,7 @@ import (
 	"knative.dev/pkg/changeset"
 	kubeclient "knative.dev/pkg/client/injection/kube/client"
 	deploymentinformer "knative.dev/pkg/client/injection/kube/informers/apps/v1/deployment"
+	rtresourceinformer "knative.dev/serving/pkg/client/injection/informers/rtresource/v1/rtresource"
 	servingclient "knative.dev/serving/pkg/client/injection/client"
 	painformer "knative.dev/serving/pkg/client/injection/informers/autoscaling/v1alpha1/podautoscaler"
 	revisioninformer "knative.dev/serving/pkg/client/injection/informers/serving/v1/revision"
@@ -74,6 +75,7 @@ func newControllerWithOptions(
 	logger := logging.FromContext(ctx)
 	revisionInformer := revisioninformer.Get(ctx)
 	deploymentInformer := deploymentinformer.Get(ctx)
+	rtresourceInformer := rtresourceinformer.Get(ctx)
 	imageInformer := imageinformer.Get(ctx)
 	paInformer := painformer.Get(ctx)
 	certificateInformer := certificateinformer.Get(ctx)
@@ -87,6 +89,7 @@ func newControllerWithOptions(
 		podAutoscalerLister: paInformer.Lister(),
 		imageLister:         imageInformer.Lister(),
 		deploymentLister:    deploymentInformer.Lister(),
+		rtresourceLister:    rtresourceInformer.Lister(),
 		certificateLister:   certificateInformer.Lister(),
 	}
 
@@ -138,6 +141,7 @@ func newControllerWithOptions(
 		Handler:    controller.HandleAll(impl.EnqueueControllerOf),
 	}
 	deploymentInformer.Informer().AddEventHandler(handleMatchingControllers)
+	rtresourceInformer.Informer().AddEventHandler(handleMatchingControllers)
 	paInformer.Informer().AddEventHandler(handleMatchingControllers)
 	certificateInformer.Informer().AddEventHandler(controller.HandleAll(
 		// Call the tracker's OnChanged method, but we've seen the objects

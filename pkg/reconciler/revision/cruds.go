@@ -29,6 +29,7 @@ import (
 	"knative.dev/pkg/kmp"
 	"knative.dev/pkg/logging"
 	autoscalingv1alpha1 "knative.dev/serving/pkg/apis/autoscaling/v1alpha1"
+	rtresourcev1 "knative.dev/serving/pkg/apis/rtresource/v1"
 	v1 "knative.dev/serving/pkg/apis/serving/v1"
 	"knative.dev/serving/pkg/client/injection/reconciler/autoscaling/v1alpha1/podautoscaler"
 	"knative.dev/serving/pkg/reconciler/revision/config"
@@ -44,6 +45,17 @@ func (c *Reconciler) createDeployment(ctx context.Context, rev *v1.Revision) (*a
 	}
 
 	return c.kubeclient.AppsV1().Deployments(deployment.Namespace).Create(ctx, deployment, metav1.CreateOptions{})
+}
+
+func (c *Reconciler) createRTResource(ctx context.Context, rev *v1.Revision) (*rtresourcev1.RTResource, error) {
+	cfgs := config.FromContext(ctx)
+
+	rt, err := resources.MakeRTResource(rev, cfgs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make rtresource: %w", err)
+	}
+
+	return c.client.RtgroupV1().RTResources(rt.Namespace).Create(ctx, rt, metav1.CreateOptions{})
 }
 
 func (c *Reconciler) checkAndUpdateDeployment(ctx context.Context, rev *v1.Revision, have *appsv1.Deployment) (*appsv1.Deployment, error) {
@@ -94,6 +106,54 @@ func (c *Reconciler) checkAndUpdateDeployment(ctx context.Context, rev *v1.Revis
 	return d, nil
 }
 
+func (c *Reconciler) checkAndUpdateRTResource(ctx context.Context, rev *v1.Revision, have *rtresourcev1.RTResource) (*rtresourcev1.RTResource, error) {
+	logger := logging.FromContext(ctx)
+	cfgs := config.FromContext(ctx)
+
+	rtresource, err := resources.MakeRTResource(rev, cfgs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update rtresource: %w", err)
+	}
+
+	// Preserve the current scale of the RTResource.
+	rtresource.Spec.Replicas = have.Spec.Replicas
+
+	// Preserve the label selector since it's immutable.
+	// TODO(dprotaso): determine other immutable properties.
+	rtresource.Spec.Selector = have.Spec.Selector
+
+	// If the spec we want is the spec we have, then we're good.
+	if equality.Semantic.DeepEqual(have.Spec, rtresource.Spec) {
+		return have, nil
+	}
+
+	// Otherwise attempt an update (with ONLY the spec changes).
+	desiredRTResource := have.DeepCopy()
+	desiredRTResource.Spec = rtresource.Spec
+
+	// Carry over new labels.
+	desiredRTResource.Labels = kmeta.UnionMaps(rtresource.Labels, desiredRTResource.Labels)
+	
+	r, err := c.client.RtgroupV1().RTResources(rtresource.Namespace).Update(ctx, desiredRTResource, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	// If what comes back from the update (with defaults applied by the API server) is the same
+	// as what we have then nothing changed.
+	if equality.Semantic.DeepEqual(have.Spec, r.Spec) {
+		return r, nil
+	}
+	diff, err := kmp.SafeDiff(have.Spec, r.Spec)
+	if err != nil {
+		return nil, err
+	}
+
+	// If what comes back has a different spec, then signal the change.
+	logger.Info("Reconciled rtresource diff (-desired, +observed): ", diff)
+	return r, nil
+}
+
 func (c *Reconciler) createImageCache(ctx context.Context, rev *v1.Revision, containerName, imageDigest string) (*caching.Image, error) {
 	image := resources.MakeImageCache(rev, containerName, imageDigest)
 	return c.cachingclient.CachingV1alpha1().Images(image.Namespace).Create(ctx, image, metav1.CreateOptions{})
@@ -103,8 +163,19 @@ func (c *Reconciler) createPA(
 	ctx context.Context,
 	rev *v1.Revision,
 	deployment *appsv1.Deployment,
+	rtresource *rtresourcev1.RTResource,
 ) (*autoscalingv1alpha1.PodAutoscaler, error) {
-	pa := resources.MakePA(rev, deployment)
+	var targetKind string
+	switch {
+	case deployment != nil:
+		targetKind = "Deployment"
+	case rtresource != nil:
+		targetKind = "RTResource"
+	default:
+		return nil, fmt.Errorf("either deployment or rtresource must be provided")
+	}
+
+	pa := resources.MakePA(rev, deployment, rtresource, targetKind)
 
 	// Ensure autoscaling annotations are set before creating PA.
 	// This avoids a race condition where the informer cache sees the PA

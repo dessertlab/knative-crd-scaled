@@ -26,6 +26,7 @@ import (
 	"knative.dev/pkg/apis"
 	autoscalingv1alpha1 "knative.dev/serving/pkg/apis/autoscaling/v1alpha1"
 	"knative.dev/serving/pkg/apis/config"
+	rtresourcev1 "knative.dev/serving/pkg/apis/rtresource/v1"
 	"knative.dev/serving/pkg/apis/serving"
 )
 
@@ -156,6 +157,23 @@ func (rs *RevisionStatus) MarkResourcesAvailableUnknown(reason, message string) 
 func (rs *RevisionStatus) PropagateDeploymentStatus(original *appsv1.DeploymentStatus) {
 	ds := serving.TransformDeploymentStatus(original)
 	cond := ds.GetCondition(serving.DeploymentConditionReady)
+
+	m := revisionCondSet.Manage(rs)
+	switch cond.Status {
+	case corev1.ConditionTrue:
+		m.MarkTrue(RevisionConditionResourcesAvailable)
+	case corev1.ConditionFalse:
+		m.MarkFalse(RevisionConditionResourcesAvailable, cond.Reason, cond.Message)
+	case corev1.ConditionUnknown:
+		m.MarkUnknown(RevisionConditionResourcesAvailable, cond.Reason, cond.Message)
+	}
+}
+
+// PropagateRTResourceStatus takes the RTResource status and applies its values
+// to the Revision status.
+func (rs *RevisionStatus) PropagateRTResourceStatus(original *rtresourcev1.RTResourceStatus) {
+	rtr := rtresourcev1.TransformRTResourceStatus(original)
+	cond := rtr.GetCondition(apis.ConditionReady)
 
 	m := revisionCondSet.Manage(rs)
 	switch cond.Status {
