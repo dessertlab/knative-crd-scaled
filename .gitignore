@@ -9,3 +9,13 @@
 # Temporary output of build tools
 bazel-*
 *.out
+
+# Executables
+activator
+autoscaler
+autoscaler-hpa
+controller
+default-domain
+queue
+schema-tweak
+webhook
