@@ -83,6 +83,8 @@ spec:
           value: config-logging
         - name: CONFIG_OBSERVABILITY_NAME
           value: config-observability
+        - name: KUBERNETES_MIN_VERSION
+          value: "1.29.0"
 
         securityContext:
           allowPrivilegeEscalation: false

@@ -164,7 +164,7 @@ Run:
 ko apply --selector knative.dev/crd-install=true -Rf config/core/
 kubectl wait --for=condition=Established --all crd
 
-ko apply -Rf config/core/
+ko apply -Rf config/core/ --push=true --bare -- --request-timeout=5m --validate=false
 
 # Optional steps
 

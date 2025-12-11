@@ -78,6 +78,8 @@ spec:
           value: webhook
         - name: WEBHOOK_PORT
           value: "8443"
+        - name: KUBERNETES_MIN_VERSION
+          value: "1.29.0"
 
         securityContext:
           allowPrivilegeEscalation: false
