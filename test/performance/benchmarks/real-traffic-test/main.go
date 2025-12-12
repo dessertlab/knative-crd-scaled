@@ -25,7 +25,9 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,7 +44,6 @@ import (
 	"knative.dev/serving/pkg/apis/serving"
 	ktest "knative.dev/serving/pkg/testing/v1"
 	"knative.dev/serving/test"
-	"knative.dev/serving/test/performance/performance"
 	v1test "knative.dev/serving/test/v1"
 
 	"knative.dev/pkg/signals"
@@ -55,25 +56,26 @@ const (
 	benchmarkName = "Knative Serving real traffic test"
 	serviceName   = "perftest"
 
-	duration = 5 * time.Minute
+	duration = 1 * time.Minute
 
 	// Test configuration
 	// Defines the latency of target
 	minLatency = 0 * time.Second
-	maxLatency = 5 * time.Second
+	maxLatency = 0 * time.Second
 
 	// Defines the delay that a Knative Service has for startup (init-container causes the delay)
 	minStartupLatency = 0 * time.Second
-	maxStartupLatency = 10 * time.Second
+	maxStartupLatency = 0 * time.Second
 
 	// Defines the payloads that are sent on the vegeta requests
-	minPayloadSizeBytes = 10
-	maxPayloadSizeBytes = 50_000
+	minPayloadSizeBytes = 10_000
+	maxPayloadSizeBytes = 10_000
 )
 
 var (
 	numberOfServices = flag.Int("number-of-services", 10, "The number of Knative Services to create")
 	rps              = flag.Int("requests-per-second", 300, "The of requests per second to send")
+	criticalTest     = flag.Bool("critical-test", false, "Whether this is a critical test or not")
 )
 
 type serviceConfig struct {
@@ -117,11 +119,13 @@ func main() {
 		log.Fatal("Failed to setup clients: ", err)
 	}
 
-	influxReporter, err := performance.NewInfluxReporter(map[string]string{"number-of-services": strconv.Itoa(*numberOfServices)})
-	if err != nil {
-		log.Fatalf("failed to create influx reporter: %v", err.Error())
-	}
-	defer influxReporter.FlushAndShutdown()
+	/*
+		influxReporter, err := performance.NewInfluxReporter(map[string]string{"number-of-services": strconv.Itoa(*numberOfServices)})
+		if err != nil {
+			log.Fatalf("failed to create influx reporter: %v", err.Error())
+		}
+		defer influxReporter.FlushAndShutdown()
+	*/
 
 	log.Printf("Creating %d Knative Services", *numberOfServices)
 	services, cleanup, err := createServices(clients, *numberOfServices)
@@ -136,7 +140,7 @@ func main() {
 	for _, svc := range services {
 		t := vegeta.Target{
 			Method: http.MethodPost,
-			URL:    fmt.Sprintf("http://%s.default.svc.cluster.local?sleep=%d", svc.resourceObjects.Service.Name, svc.latency),
+			URL:    fmt.Sprintf("http://%s-00001.default.svc.cluster.local?sleep=%d", svc.resourceObjects.Service.Name, svc.latency),
 			Body:   svc.payload,
 		}
 		targets = append(targets, t)
@@ -155,6 +159,10 @@ func main() {
 	results := attacker.Attack(targeter, rate, duration, "real-traffic-test")
 
 	metricResults := &vegeta.Metrics{}
+	serviceMetrics := make(map[string]*vegeta.Metrics)
+	for _, svc := range services {
+		serviceMetrics[svc.resourceObjects.Service.Name] = &vegeta.Metrics{}
+	}
 
 LOOP:
 	for {
@@ -170,6 +178,10 @@ LOOP:
 					log.Printf("error occurred calling target. Err: %s, url: %s, method: %s", res.Error, res.URL, res.Method)
 				}
 				metricResults.Add(res)
+				serviceName := extractServiceNameFromURL(res.URL)
+				if metrics, ok := serviceMetrics[serviceName]; ok {
+					metrics.Add(res)
+				}
 			} else {
 				// If there are no more results, then we're done!
 				break LOOP
@@ -179,14 +191,92 @@ LOOP:
 
 	// Compute latency percentiles
 	metricResults.Close()
+	for _, metrics := range serviceMetrics {
+		metrics.Close()
+	}
+
+	// Ensure results directory exists
+	resultsDir := "/experiments/knative/real-traffic-test/preempt-k8s/no-preemptive-kubelet"
+	if err := os.MkdirAll(resultsDir, 0755); err != nil {
+		log.Printf("Failed to create results directory: %v", err)
+	} else {
+		log.Printf("Created results directory: %s", resultsDir)
+	}
+
+	// Create output file with timestamp
+	timestamp := time.Now().Format("2006-01-02_15-04-05")
+	outputFile := filepath.Join(resultsDir, fmt.Sprintf("results_%s.txt", timestamp))
+
+	// Write results to file
+	f, err := os.Create(outputFile)
+	if err != nil {
+		log.Printf("Failed to create output file: %v", err)
+	} else {
+		defer f.Close()
+
+		fmt.Fprintf(f, "=== Real Traffic Test Results ===\n")
+		fmt.Fprintf(f, "\n")
+		fmt.Fprintf(f, "\n")
+
+		fmt.Fprintf(f, "== Test Configuration ==\n")
+		fmt.Fprintf(f, "\n")
+		fmt.Fprintf(f, "Services: %d\n", *numberOfServices)
+		fmt.Fprintf(f, "RPS: %d\n", *rps)
+		fmt.Fprintf(f, "Duration: %s\n", duration)
+		fmt.Fprintf(f, "Min Latency: %s\n", minLatency)
+		fmt.Fprintf(f, "Max Latency: %s\n", maxLatency)
+		fmt.Fprintf(f, "Min Startup Latency: %s\n", minStartupLatency)
+		fmt.Fprintf(f, "Max Startup Latency: %s\n", maxStartupLatency)
+		fmt.Fprintf(f, "Min Payload Size (bytes): %d\n", minPayloadSizeBytes)
+		fmt.Fprintf(f, "Max Payload Size (bytes): %d\n", maxPayloadSizeBytes)
+		fmt.Fprintf(f, "\n")
+		fmt.Fprintf(f, "\n")
+
+		fmt.Fprintf(f, "== Test Results ==\n")
+		fmt.Fprintf(f, "\n")
+
+		fmt.Fprintf(f, "= Aggregated Results =\n")
+		fmt.Fprintf(f, "\n")
+		if err := vegeta.NewTextReporter(metricResults).Report(f); err != nil {
+			log.Printf("Failed to write metrics: %v", err)
+		}
+		fmt.Fprintf(f, "\n")
+
+		fmt.Fprintf(f, "= Per-Service Results =\n")
+		fmt.Fprintf(f, "\n")
+
+		for _, svc := range services {
+			serviceName := svc.resourceObjects.Service.Name
+			metrics := serviceMetrics[serviceName]
+
+			fmt.Fprintf(f, "# Service: %s\n", serviceName)
+			if *criticalTest {
+				for i, s := range services {
+					if s == svc {
+						fmt.Fprintf(f, "Criticality Level: %d\n", i+1)
+						break
+					}
+				}
+			}
+			fmt.Fprintf(f, "\n")
+
+			if err := vegeta.NewTextReporter(metrics).Report(f); err != nil {
+				log.Printf("Failed to write metrics for service %s: %v", serviceName, err)
+			}
+
+			fmt.Fprintf(f, "\n")
+		}
+
+		log.Printf("Results saved to %s", outputFile)
+	}
 
 	// Report the results
-	influxReporter.AddDataPointsForMetrics(metricResults, benchmarkName)
+	//influxReporter.AddDataPointsForMetrics(metricResults, benchmarkName)
 	_ = vegeta.NewTextReporter(metricResults).Report(os.Stdout)
 
 	if err := checkSLA(metricResults, rate); err != nil {
 		cleanup()
-		influxReporter.FlushAndShutdown()
+		//influxReporter.FlushAndShutdown()
 		log.Fatal(err.Error())
 	}
 
@@ -199,7 +289,7 @@ func createServices(clients *test.Clients, count int) ([]*serviceConfig, func(),
 	// Initialize our service names.
 	for i := range count {
 		testNames[i] = &test.ResourceNames{
-			Service: test.AppendRandomString(fmt.Sprintf("%s-%02d", serviceName, i)),
+			Service: fmt.Sprintf("%s-%d", serviceName, i),
 			// The crd.go helpers will convert to the actual image path.
 			Image: test.Runtime,
 		}
@@ -232,12 +322,18 @@ func createServices(clients *test.Clients, count int) ([]*serviceConfig, func(),
 		g.Go(func() error {
 			annotations := map[string]string{config.AllowHTTPFullDuplexFeatureKey: "Enabled"}
 
-			activatorInPath := getRandomBool()
+			activatorInPath := false
 			if activatorInPath {
 				annotations[autoscaling.TargetBurstCapacityKey] = "-1"
 			}
 
 			sos := append(commonSos, ktest.WithConfigAnnotations(annotations))
+
+			if *criticalTest {
+				serviceAnnotations := map[string]string{}
+				serviceAnnotations["autoscaling.knative.dev/application-criticality-level"] = strconv.Itoa(i + 1)
+				sos = append(sos, ktest.WithServiceAnnotations(serviceAnnotations))
+			}
 
 			startupLatency := getRandomValue(int64(minStartupLatency.Seconds()), int64(maxStartupLatency.Seconds()))
 			if startupLatency > 0 {
@@ -290,8 +386,18 @@ func getRandomValue(min, max int64) int64 {
 	return rand.Int63n(max-min) + min
 }
 
+/*
 func getRandomBool() bool {
 	return rand.Intn(2) == 1
+}
+*/
+
+func extractServiceNameFromURL(url string) string {
+	start := len("http://")
+	if idx := strings.Index(url[start:], "-00001"); idx != -1 {
+		return url[start : start+idx]
+	}
+	return ""
 }
 
 func checkSLA(results *vegeta.Metrics, rate vegeta.ConstantPacer) error {

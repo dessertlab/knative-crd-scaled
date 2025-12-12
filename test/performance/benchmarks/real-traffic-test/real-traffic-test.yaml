@@ -47,33 +47,36 @@ spec:
       - name: load-test
         image: ko://knative.dev/serving/test/performance/benchmarks/real-traffic-test
         args:
-        - "-number-of-services=50"
+        - "-number-of-services=10"
         - "-requests-per-second=2000"
+        - "-critical-test=true"
         env:
           - name: KO_DOCKER_REPO
             value: $KO_DOCKER_REPO
           - name: SYSTEM_NAMESPACE
             value: $SYSTEM_NAMESPACE
-          - name: INFLUX_URL
-            valueFrom:
-              secretKeyRef:
-                name: performance-test-config
-                key: influxurl
-          - name: INFLUX_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: performance-test-config
-                key: influxtoken
+          # - name: INFLUX_URL
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: performance-test-config
+          #       key: influxurl
+          # - name: INFLUX_TOKEN
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: performance-test-config
+          #       key: influxtoken
           - name: JOB_NAME
             valueFrom:
               secretKeyRef:
                 name: performance-test-config
                 key: jobname
+                optional: true
           - name: BUILD_ID
             valueFrom:
               secretKeyRef:
                 name: performance-test-config
                 key: buildid
+                optional: true
         resources:
           requests:
             cpu: 1000m
@@ -90,4 +93,11 @@ spec:
           capabilities:
             drop:
               - ALL
+        volumeMounts:
+          - name: experiments-results
+            mountPath: /experiments
+      volumes:
+        - name: experiments-results
+          persistentVolumeClaim:
+            claimName: experiments-results
       restartPolicy: Never
