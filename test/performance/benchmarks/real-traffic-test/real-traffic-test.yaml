@@ -45,38 +45,33 @@ spec:
       serviceAccountName: loader
       containers:
       - name: load-test
-        image: ko://knative.dev/serving/test/performance/benchmarks/real-traffic-test
+        # image: ko://knative.dev/serving/test/performance/benchmarks/real-traffic-test
+        image: docker.io/dessertunina/real-traffic-test@sha256:b110c31d965b602675e75b1100e37049f0e4b2a61152b11ff2dc29857b64c3a6
         args:
         - "-number-of-services=10"
-        - "-requests-per-second=2000"
+        - "-requests-per-second=600"
         - "-critical-test=true"
         env:
           - name: KO_DOCKER_REPO
-            value: $KO_DOCKER_REPO
+            valueFrom:
+             secretKeyRef:
+               name: performance-test-config
+               key: kodockerrepo
           - name: SYSTEM_NAMESPACE
-            value: $SYSTEM_NAMESPACE
-          # - name: INFLUX_URL
-          #   valueFrom:
-          #     secretKeyRef:
-          #       name: performance-test-config
-          #       key: influxurl
-          # - name: INFLUX_TOKEN
-          #   valueFrom:
-          #     secretKeyRef:
-          #       name: performance-test-config
-          #       key: influxtoken
+            valueFrom:
+             secretKeyRef:
+               name: performance-test-config
+               key: systemnamespace
           - name: JOB_NAME
             valueFrom:
               secretKeyRef:
                 name: performance-test-config
                 key: jobname
-                optional: true
           - name: BUILD_ID
             valueFrom:
               secretKeyRef:
                 name: performance-test-config
                 key: buildid
-                optional: true
         resources:
           requests:
             cpu: 1000m

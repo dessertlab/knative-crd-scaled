@@ -215,6 +215,14 @@ kubectl patch configmap/config-network \
   -n knative-serving \
   --type merge \
   -p '{"data":{"ingress.class":"kourier.ingress.networking.knative.dev"}}'
+
+kubectl set env deployment/net-kourier-controller \
+  -n knative-serving \
+  KUBERNETES_MIN_VERSION=1.29.0
+
+kubectl scale deployment 3scale-kourier-gateway \
+  -n kourier-system \
+  --replicas=3
 ```
 
 If you want to choose another Ingress solution, you can follow the instructions in the

@@ -140,7 +140,7 @@ func main() {
 	for _, svc := range services {
 		t := vegeta.Target{
 			Method: http.MethodPost,
-			URL:    fmt.Sprintf("http://%s-00001.default.svc.cluster.local?sleep=%d", svc.resourceObjects.Service.Name, svc.latency),
+			URL:    fmt.Sprintf("http://%s.default.svc.cluster.local?sleep=%d", svc.resourceObjects.Service.Name, svc.latency),
 			Body:   svc.payload,
 		}
 		targets = append(targets, t)
@@ -327,13 +327,14 @@ func createServices(clients *test.Clients, count int) ([]*serviceConfig, func(),
 				annotations[autoscaling.TargetBurstCapacityKey] = "-1"
 			}
 
-			sos := append(commonSos, ktest.WithConfigAnnotations(annotations))
-
 			if *criticalTest {
-				serviceAnnotations := map[string]string{}
-				serviceAnnotations["autoscaling.knative.dev/application-criticality-level"] = strconv.Itoa(i + 1)
-				sos = append(sos, ktest.WithServiceAnnotations(serviceAnnotations))
+				annotations["autoscaling.knative.dev/application-criticality-level"] = strconv.Itoa(ndx + 1)
 			}
+
+			annotations["autoscaling.knative.dev/metric"] = "concurrency"
+			annotations["autoscaling.knative.dev/target"] = "7"
+
+			sos := append(commonSos, ktest.WithConfigAnnotations(annotations))
 
 			startupLatency := getRandomValue(int64(minStartupLatency.Seconds()), int64(maxStartupLatency.Seconds()))
 			if startupLatency > 0 {
@@ -383,7 +384,11 @@ func getRandomPayload(min int, max int) ([]byte, error) {
 }
 
 func getRandomValue(min, max int64) int64 {
-	return rand.Int63n(max-min) + min
+	if max <= min {
+		return min
+	} else {
+		return rand.Int63n(max-min) + min
+	}
 }
 
 /*
@@ -394,7 +399,7 @@ func getRandomBool() bool {
 
 func extractServiceNameFromURL(url string) string {
 	start := len("http://")
-	if idx := strings.Index(url[start:], "-00001"); idx != -1 {
+	if idx := strings.Index(url[start:], ".default"); idx != -1 {
 		return url[start : start+idx]
 	}
 	return ""

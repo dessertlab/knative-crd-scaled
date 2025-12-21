@@ -23,6 +23,34 @@ import (
 	duckv1 "knative.dev/pkg/apis/duck/v1"
 )
 
+const (
+	// RTResourceConditionReady is set when the resource related application Pods are running
+	RTResourceConditionReady apis.ConditionType = apis.ConditionReady
+
+	// RTResourceConditionProgressing is set when the resource is being deployed
+	RTResourceConditionProgressing apis.ConditionType = "Progressing"
+)
+
+// IsRTResourceCondition returns true if the given ConditionType is a RTResourceCondition.
+func IsRTResourceCondition(t apis.ConditionType) bool {
+	switch t {
+	case RTResourceConditionReady, RTResourceConditionProgressing:
+		return true
+	}
+	return false
+}
+
+var condSet = apis.NewLivingConditionSet(
+	RTResourceConditionProgressing,
+	RTResourceConditionReady,
+)
+
+// GetConditionSet retrieves the condition set for this resource.
+// Implements the KRShaped interface.
+func (*RTResource) GetConditionSet() apis.ConditionSet {
+	return condSet
+}
+
 // GetGroupVersionKind returns the GroupVersionKind.
 func (*RTResource) GetGroupVersionKind() schema.GroupVersionKind {
 	return SchemeGroupVersion.WithKind("RTResource")
@@ -48,7 +76,7 @@ func TransformRTResourceStatus(original *RTResourceStatus) *duckv1.Status {
 		case apis.ConditionReady:
 			condType = apis.ConditionReady
 		case RTResourceConditionProgressing:
-			condType = RTResourceConditionProgressing
+			continue
 		default:
 			continue
 		}

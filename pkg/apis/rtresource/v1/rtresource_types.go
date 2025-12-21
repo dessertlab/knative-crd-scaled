@@ -90,23 +90,6 @@ type RTResourceSpec struct {
 // RTResourceConditionType is a valid value for RTResourceCondition.Type
 type RTResourceConditionType string
 
-const (
-	// RTResourceConditionReady is set when the resource related application Pods are running
-	RTResourceConditionReady apis.ConditionType = apis.ConditionReady
-
-	// RTResourceConditionProgressing is set when the resource is being deployed
-	RTResourceConditionProgressing apis.ConditionType = "Progressing"
-)
-
-// IsRTResourceCondition returns true if the given ConditionType is a RTResourceCondition.
-func IsRTResourceCondition(t apis.ConditionType) bool {
-	switch t {
-	case RTResourceConditionReady, RTResourceConditionProgressing:
-		return true
-	}
-	return false
-}
-
 // RTResourceStatus is the status for a RTResource resource
 type RTResourceStatus struct {
 	duckv1.Status `json:",inline"`
@@ -133,14 +116,4 @@ type RTResourceList struct {
 // GetStatus retrieves the status of the RTResource. Implements the KRShaped interface.
 func (t *RTResource) GetStatus() *duckv1.Status {
 	return &t.Status.Status
-}
-
-var condSet = apis.NewLivingConditionSet(
-	RTResourceConditionProgressing,
-)
-
-// GetConditionSet retrieves the condition set for this resource.
-// Implements the KRShaped interface.
-func (*RTResource) GetConditionSet() apis.ConditionSet {
-	return condSet
 }
