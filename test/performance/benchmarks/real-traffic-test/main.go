@@ -74,7 +74,7 @@ const (
 
 var (
 	numberOfServices = flag.Int("number-of-services", 10, "The number of Knative Services to create")
-	rps              = flag.Int("requests-per-second", 300, "The of requests per second to send")
+	rps              = flag.Int("requests-per-second", 300, "The number of requests per second to send")
 	criticalTest     = flag.Bool("critical-test", false, "Whether this is a critical test or not")
 )
 
@@ -133,6 +133,9 @@ func main() {
 		log.Fatalf("Failed to create services: %v", err)
 	}
 	defer cleanup()
+
+	log.Print("Waiting for services to scale to zero")
+	time.Sleep(70 * time.Second)
 
 	log.Print("Creating vegeta targets")
 
@@ -332,7 +335,7 @@ func createServices(clients *test.Clients, count int) ([]*serviceConfig, func(),
 			}
 
 			annotations["autoscaling.knative.dev/metric"] = "concurrency"
-			annotations["autoscaling.knative.dev/target"] = "7"
+			annotations["autoscaling.knative.dev/target"] = "5"
 
 			sos := append(commonSos, ktest.WithConfigAnnotations(annotations))
 
