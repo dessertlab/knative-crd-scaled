@@ -18,12 +18,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,6 +38,10 @@ import (
 	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	netapi "knative.dev/networking/pkg/apis/networking"
 	"knative.dev/pkg/environment"
 	"knative.dev/pkg/injection"
@@ -73,9 +80,13 @@ const (
 )
 
 var (
-	numberOfServices = flag.Int("number-of-services", 10, "The number of Knative Services to create")
-	rps              = flag.Int("requests-per-second", 300, "The number of requests per second to send")
-	criticalTest     = flag.Bool("critical-test", false, "Whether this is a critical test or not")
+	numberOfServices      = flag.Int("number-of-services", 10, "The number of Knative Services to create")
+	rps                   = flag.Int("requests-per-second", 300, "The number of requests per second to send")
+	criticalTest          = flag.Bool("critical-test", false, "Whether this is a critical test or not")
+	sourcesOfInterference = flag.Int("sources-of-interference", 10, "The number of sources of interference to create")
+	interferingNamespace  = flag.String("interfering-namespace", "realtime", "The namespace where interfering resources are created")
+	bucketNode            = flag.String("bucket-node", "dessertw3", "The node where interfering resources are scheduled")
+	lokiURL               = flag.String("loki-url", "http://loki.observability.svc.cluster.local:3100", "Loki endpoint URL")
 )
 
 type serviceConfig struct {
@@ -85,6 +96,22 @@ type serviceConfig struct {
 	latency               int64
 	startupLatency        int64
 	payload               []byte
+}
+
+type LokiQueryRequest struct {
+	Name  string `json:"name"`
+	Query string `json:"query"`
+}
+
+type LokiResponse struct {
+	Status string `json:"status"`
+	Data   struct {
+		ResultType string `json:"resultType"`
+		Result     []struct {
+			Stream map[string]string `json:"stream"`
+			Values [][]string        `json:"values"`
+		} `json:"result"`
+	} `json:"data"`
 }
 
 func main() {
@@ -119,13 +146,11 @@ func main() {
 		log.Fatal("Failed to setup clients: ", err)
 	}
 
-	/*
-		influxReporter, err := performance.NewInfluxReporter(map[string]string{"number-of-services": strconv.Itoa(*numberOfServices)})
-		if err != nil {
-			log.Fatalf("failed to create influx reporter: %v", err.Error())
-		}
-		defer influxReporter.FlushAndShutdown()
-	*/
+	// Dynamic client to create interfering resources
+	dynamicClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		log.Fatalf("Failed to create dynamic client: %v", err)
+	}
 
 	log.Printf("Creating %d Knative Services", *numberOfServices)
 	services, cleanup, err := createServices(clients, *numberOfServices)
@@ -137,6 +162,34 @@ func main() {
 	log.Print("Waiting for services to scale to zero")
 	time.Sleep(70 * time.Second)
 
+	// We start interference routines
+	interferenceCtx, cancelInterference := context.WithCancel(ctx)
+	defer cancelInterference()
+
+	log.Printf("Starting %d interference routines", *sourcesOfInterference)
+
+	interferenceGroup := errgroup.Group{}
+	if *criticalTest {
+		log.Print("Using RTResource interference resources")
+
+		for i := 0; i < *sourcesOfInterference; i++ {
+			routineID := i
+			interferenceGroup.Go(func() error {
+				return runRTResourceInterferenceRoutine(interferenceCtx, dynamicClient, routineID)
+			})
+		}
+	} else {
+		log.Print("Using Deployment interference resources")
+
+		for i := 0; i < *sourcesOfInterference; i++ {
+			routineID := i
+			interferenceGroup.Go(func() error {
+				return runDeploymentInterferenceRoutine(interferenceCtx, dynamicClient, routineID)
+			})
+		}
+	}
+
+	// We prepare vegeta targets
 	log.Print("Creating vegeta targets")
 
 	targets := []vegeta.Target{}
@@ -155,6 +208,7 @@ func main() {
 	// Send configured RPS round-robin over all services,
 	// while the request timeout is based on the max delays + 20 seconds
 	log.Printf("Starting vegeta attack for with %v RPS for duration: %v", *rps, duration)
+	testStartTime := time.Now()
 	rate := vegeta.Rate{Freq: *rps, Per: time.Second}
 	attacker := vegeta.NewAttacker(vegeta.Timeout(maxLatency + maxStartupLatency + 20*time.Second))
 	targeter := vegeta.NewStaticTargeter(targets...)
@@ -198,88 +252,65 @@ LOOP:
 		metrics.Close()
 	}
 
-	// Ensure results directory exists
-	resultsDir := "/experiments/knative/real-traffic-test/preempt-k8s/no-preemptive-kubelet"
+	log.Print("Waiting for logs to be published to Loki")
+	time.Sleep(30 * time.Second)
+
+	testEndTime := time.Now()
+
+	// We stop interference routines
+	log.Print("Stopping interference routines")
+
+	cancelInterference()
+	if err := interferenceGroup.Wait(); err != nil {
+		log.Printf("Interference routines error: %v", err)
+	}
+
+	// We ensure results directory exists
+	timestamp := time.Now().Format("2006-01-02_15-04-05")
+
+	resultsDir := ""
+	if *criticalTest {
+		resultsDir = fmt.Sprintf("/experiments/knative/real-traffic-test/preempt-k8s/%s", timestamp)
+	} else {
+		resultsDir = fmt.Sprintf("/experiments/knative/real-traffic-test/kube-manager/%s", timestamp)
+	}
 	if err := os.MkdirAll(resultsDir, 0755); err != nil {
 		log.Printf("Failed to create results directory: %v", err)
 	} else {
 		log.Printf("Created results directory: %s", resultsDir)
 	}
 
-	// Create output file with timestamp
-	timestamp := time.Now().Format("2006-01-02_15-04-05")
-	outputFile := filepath.Join(resultsDir, fmt.Sprintf("results_%s.txt", timestamp))
+	vegetaOutputFile := filepath.Join(resultsDir, "vegeta_metrics.txt")
+	lokiOutputFile := filepath.Join(resultsDir, "audit_logs.json")
 
-	// Write results to file
-	f, err := os.Create(outputFile)
+	// We save the experimet results
+
+	// We start from vegeta metrics
+	log.Printf("Saving vegeta results to %s", vegetaOutputFile)
+	if err := saveVegetaResults(vegetaOutputFile, metricResults, serviceMetrics, services); err != nil {
+		log.Printf("Failed to save vegeta results: %v", err)
+	}
+	// We collect logs from Loki
+	log.Printf("Collecting apiserver audit logs from Loki at %s", *lokiURL)
+
+	lokiData, err := queryLokiLogs(ctx, testStartTime, testEndTime)
 	if err != nil {
-		log.Printf("Failed to create output file: %v", err)
-	} else {
-		defer f.Close()
-
-		fmt.Fprintf(f, "=== Real Traffic Test Results ===\n")
-		fmt.Fprintf(f, "\n")
-		fmt.Fprintf(f, "\n")
-
-		fmt.Fprintf(f, "== Test Configuration ==\n")
-		fmt.Fprintf(f, "\n")
-		fmt.Fprintf(f, "Services: %d\n", *numberOfServices)
-		fmt.Fprintf(f, "RPS: %d\n", *rps)
-		fmt.Fprintf(f, "Duration: %s\n", duration)
-		fmt.Fprintf(f, "Min Latency: %s\n", minLatency)
-		fmt.Fprintf(f, "Max Latency: %s\n", maxLatency)
-		fmt.Fprintf(f, "Min Startup Latency: %s\n", minStartupLatency)
-		fmt.Fprintf(f, "Max Startup Latency: %s\n", maxStartupLatency)
-		fmt.Fprintf(f, "Min Payload Size (bytes): %d\n", minPayloadSizeBytes)
-		fmt.Fprintf(f, "Max Payload Size (bytes): %d\n", maxPayloadSizeBytes)
-		fmt.Fprintf(f, "\n")
-		fmt.Fprintf(f, "\n")
-
-		fmt.Fprintf(f, "== Test Results ==\n")
-		fmt.Fprintf(f, "\n")
-
-		fmt.Fprintf(f, "= Aggregated Results =\n")
-		fmt.Fprintf(f, "\n")
-		if err := vegeta.NewTextReporter(metricResults).Report(f); err != nil {
-			log.Printf("Failed to write metrics: %v", err)
-		}
-		fmt.Fprintf(f, "\n")
-
-		fmt.Fprintf(f, "= Per-Service Results =\n")
-		fmt.Fprintf(f, "\n")
-
-		for _, svc := range services {
-			serviceName := svc.resourceObjects.Service.Name
-			metrics := serviceMetrics[serviceName]
-
-			fmt.Fprintf(f, "# Service: %s\n", serviceName)
-			if *criticalTest {
-				for i, s := range services {
-					if s == svc {
-						fmt.Fprintf(f, "Criticality Level: %d\n", i+1)
-						break
-					}
-				}
-			}
-			fmt.Fprintf(f, "\n")
-
-			if err := vegeta.NewTextReporter(metrics).Report(f); err != nil {
-				log.Printf("Failed to write metrics for service %s: %v", serviceName, err)
-			}
-
-			fmt.Fprintf(f, "\n")
-		}
-
-		log.Printf("Results saved to %s", outputFile)
+		log.Printf("Failed to query Loki: %v", err)
 	}
 
-	// Report the results
-	//influxReporter.AddDataPointsForMetrics(metricResults, benchmarkName)
+	if lokiData != nil && len(lokiData) > 0 {
+		if err := saveLokiData(lokiOutputFile, lokiData); err != nil {
+			log.Printf("Failed to save Loki data: %v", err)
+		}
+	} else {
+		log.Printf("No audit logs retrieved from Loki")
+	}
+
+	// We report vegeta results
 	_ = vegeta.NewTextReporter(metricResults).Report(os.Stdout)
 
 	if err := checkSLA(metricResults, rate); err != nil {
 		cleanup()
-		//influxReporter.FlushAndShutdown()
 		log.Fatal(err.Error())
 	}
 
@@ -423,5 +454,352 @@ func checkSLA(results *vegeta.Metrics, rate vegeta.ConstantPacer) error {
 		return fmt.Errorf("SLA 2 failed. vegeta rate is %f, expected Rate is %f", results.Rate, rate.Rate(time.Second))
 	}
 
+	return nil
+}
+
+func runRTResourceInterferenceRoutine(ctx context.Context, dynamicClient dynamic.Interface, id int) error {
+	rtResourceGVR := schema.GroupVersionResource{
+		Group:    "rtgroup.critical.com",
+		Version:  "v1",
+		Resource: "rtresources",
+	}
+
+	resourceName := fmt.Sprintf("interfering-resource-%d", id)
+
+	log.Printf("Interference routine %d started", id)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("Interference routine %d stopping", id)
+			return nil
+		default:
+			// We define the interfering RTResource
+			rtResource := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "rtgroup.critical.com/v1",
+					"kind":       "RTResource",
+					"metadata": map[string]interface{}{
+						"name":      resourceName,
+						"namespace": interferingNamespace,
+					},
+					"spec": map[string]interface{}{
+						"namespace":   interferingNamespace,
+						"replicas":    1,
+						"criticality": strconv.Itoa(*numberOfServices + 1),
+						"selector": map[string]interface{}{
+							"matchLabels": map[string]interface{}{
+								"app-selector": fmt.Sprintf("interfering-app-%d", id),
+							},
+						},
+						"template": map[string]interface{}{
+							"metadata": map[string]interface{}{
+								"name":      fmt.Sprintf("interfering-pod-%d", id),
+								"namespace": interferingNamespace,
+								"labels": map[string]interface{}{
+									"test-label": fmt.Sprintf("interfering-label-%d", id),
+								},
+							},
+							"spec": map[string]interface{}{
+								"nodeSelector": map[string]interface{}{
+									"kubernetes.io/hostname": bucketNode,
+								},
+								"containers": []interface{}{
+									map[string]interface{}{
+										"name":  "interfering-container",
+										"image": "nginx:latest",
+										"ports": []interface{}{
+											map[string]interface{}{
+												"containerPort": 80,
+											},
+										},
+										"resources": map[string]interface{}{
+											"requests": map[string]interface{}{
+												"cpu":    "700m",
+												"memory": "200Mi",
+											},
+											"limits": map[string]interface{}{
+												"cpu":    "700m",
+												"memory": "200Mi",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			// We create and delete the RTResource in a loop to create interference
+
+			//Creation step
+			log.Printf("Interference %d: Creating RTResource", id)
+			_, err := dynamicClient.Resource(rtResourceGVR).Namespace(*interferingNamespace).Create(
+				ctx, rtResource, metav1.CreateOptions{})
+			if err != nil {
+				log.Printf("Interference %d: Failed to create RTResource: %v", id, err)
+			} else {
+				log.Printf("Interference %d: RTResource created", id)
+			}
+
+			// Deletetion step
+			log.Printf("Interference %d: Deleting RTResource", id)
+			err = dynamicClient.Resource(rtResourceGVR).Namespace(*interferingNamespace).Delete(
+				ctx, resourceName, metav1.DeleteOptions{})
+			if err != nil {
+				log.Printf("Interference %d: Failed to delete RTResource: %v", id, err)
+			} else {
+				log.Printf("Interference %d: RTResource deleted", id)
+			}
+		}
+	}
+}
+
+func runDeploymentInterferenceRoutine(ctx context.Context, dynamicClient dynamic.Interface, id int) error {
+	deploymentGVR := schema.GroupVersionResource{
+		Group:    "apps",
+		Version:  "v1",
+		Resource: "deployments",
+	}
+
+	resourceName := fmt.Sprintf("interfering-deployment-%d", id)
+
+	log.Printf("Interference routine %d started", id)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("Interference routine %d stopping", id)
+			return nil
+		default:
+			// We define the interfering Deployment
+			deployment := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "apps/v1",
+					"kind":       "Deployment",
+					"metadata": map[string]interface{}{
+						"name":      resourceName,
+						"namespace": interferingNamespace,
+					},
+					"spec": map[string]interface{}{
+						"replicas": 1,
+						"selector": map[string]interface{}{
+							"matchLabels": map[string]interface{}{
+								"app-selector": fmt.Sprintf("interfering-app-%d", id),
+							},
+						},
+						"template": map[string]interface{}{
+							"metadata": map[string]interface{}{
+								"name":      fmt.Sprintf("interfering-pod-%d", id),
+								"namespace": interferingNamespace,
+								"labels": map[string]interface{}{
+									"test-label":   fmt.Sprintf("interfering-label-%d", id),
+									"app-selector": fmt.Sprintf("interfering-app-%d", id),
+								},
+							},
+							"spec": map[string]interface{}{
+								"nodeSelector": map[string]interface{}{
+									"kubernetes.io/hostname": bucketNode,
+								},
+								"containers": []interface{}{
+									map[string]interface{}{
+										"name":  "interfering-container",
+										"image": "nginx:latest",
+										"ports": []interface{}{
+											map[string]interface{}{
+												"containerPort": 80,
+											},
+										},
+										"resources": map[string]interface{}{
+											"requests": map[string]interface{}{
+												"cpu":    "700m",
+												"memory": "200Mi",
+											},
+											"limits": map[string]interface{}{
+												"cpu":    "700m",
+												"memory": "200Mi",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			// We create and delete the Deployment in a loop to create interference
+
+			//Creation step
+			log.Printf("Interference %d: Creating Deployment", id)
+			_, err := dynamicClient.Resource(deploymentGVR).Namespace(*interferingNamespace).Create(
+				ctx, deployment, metav1.CreateOptions{})
+			if err != nil {
+				log.Printf("Interference %d: Failed to create Deployment: %v", id, err)
+			} else {
+				log.Printf("Interference %d: Deployment created", id)
+			}
+
+			// Deletetion step
+			log.Printf("Interference %d: Deleting Deployment", id)
+			err = dynamicClient.Resource(deploymentGVR).Namespace(*interferingNamespace).Delete(
+				ctx, resourceName, metav1.DeleteOptions{})
+			if err != nil {
+				log.Printf("Interference %d: Failed to delete Deployment: %v", id, err)
+			} else {
+				log.Printf("Interference %d: Deployment deleted", id)
+			}
+		}
+	}
+}
+
+func saveVegetaResults(outputFile string, metricResults *vegeta.Metrics, serviceMetrics map[string]*vegeta.Metrics, services []*serviceConfig) error {
+	f, err := os.Create(outputFile)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer f.Close()
+
+	fmt.Fprintf(f, "=== Real Traffic Test Results ===\n")
+	fmt.Fprintf(f, "\n")
+	fmt.Fprintf(f, "\n")
+
+	fmt.Fprintf(f, "== Test Configuration ==\n")
+	fmt.Fprintf(f, "\n")
+	fmt.Fprintf(f, "Services: %d\n", *numberOfServices)
+	fmt.Fprintf(f, "RPS: %d\n", *rps)
+	fmt.Fprintf(f, "Duration: %s\n", duration)
+	fmt.Fprintf(f, "Min Latency: %s\n", minLatency)
+	fmt.Fprintf(f, "Max Latency: %s\n", maxLatency)
+	fmt.Fprintf(f, "Min Startup Latency: %s\n", minStartupLatency)
+	fmt.Fprintf(f, "Max Startup Latency: %s\n", maxStartupLatency)
+	fmt.Fprintf(f, "Min Payload Size (bytes): %d\n", minPayloadSizeBytes)
+	fmt.Fprintf(f, "Max Payload Size (bytes): %d\n", maxPayloadSizeBytes)
+	fmt.Fprintf(f, "\n")
+	fmt.Fprintf(f, "\n")
+
+	fmt.Fprintf(f, "== Test Results ==\n")
+	fmt.Fprintf(f, "\n")
+
+	fmt.Fprintf(f, "= Aggregated Results =\n")
+	fmt.Fprintf(f, "\n")
+	if err := vegeta.NewTextReporter(metricResults).Report(f); err != nil {
+		log.Printf("Failed to write metrics: %v", err)
+	}
+	fmt.Fprintf(f, "\n")
+
+	fmt.Fprintf(f, "= Per-Service Results =\n")
+	fmt.Fprintf(f, "\n")
+
+	for _, svc := range services {
+		serviceName := svc.resourceObjects.Service.Name
+		metrics := serviceMetrics[serviceName]
+
+		fmt.Fprintf(f, "# Service: %s\n", serviceName)
+		if *criticalTest {
+			for i, s := range services {
+				if s == svc {
+					fmt.Fprintf(f, "Criticality Level: %d\n", i+1)
+					break
+				}
+			}
+		}
+		fmt.Fprintf(f, "\n")
+
+		if err := vegeta.NewTextReporter(metrics).Report(f); err != nil {
+			log.Printf("Failed to write metrics for service %s: %v", serviceName, err)
+		}
+
+		fmt.Fprintf(f, "\n")
+	}
+
+	log.Printf("Results saved to %s", outputFile)
+	return nil
+}
+
+func queryLokiLogs(ctx context.Context, startTime, endTime time.Time) ([]map[string]interface{}, error) {
+	logQLQuery := `{job="kubernetes-audit"} | json`
+
+	log.Printf("Executing Loki query: %s", logQLQuery)
+	log.Printf("Time range: %s to %s", startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
+
+	queryURL := fmt.Sprintf("%s/loki/api/v1/query_range", *lokiURL)
+
+	params := url.Values{}
+	params.Set("query", logQLQuery)
+	params.Set("start", strconv.FormatInt(startTime.Unix(), 10))
+	params.Set("end", strconv.FormatInt(endTime.Unix(), 10))
+	params.Set("limit", "10000")
+
+	fullURL := fmt.Sprintf("%s?%s", queryURL, params.Encode())
+
+	req, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("loki query failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var lokiResp LokiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&lokiResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	allLogs := []map[string]interface{}{}
+
+	for _, result := range lokiResp.Data.Result {
+		for _, value := range result.Values {
+			if len(value) >= 2 {
+				var logEntry map[string]interface{}
+				if err := json.Unmarshal([]byte(value[1]), &logEntry); err != nil {
+					log.Printf("Warning: Failed to parse log entry: %v", err)
+					continue
+				}
+
+				timestampNano, err := strconv.ParseInt(value[0], 10, 64)
+				if err != nil {
+					log.Printf("Warning: Failed to parse timestamp: %v", err)
+					timestampNano = 0
+				}
+
+				formattedLog := map[string]interface{}{
+					"timestamp":       value[0],
+					"timestamp_human": time.Unix(0, timestampNano).Format(time.RFC3339),
+					"log":             logEntry,
+				}
+
+				allLogs = append(allLogs, formattedLog)
+			}
+		}
+	}
+
+	log.Printf("Retrieved %d audit log entries", len(allLogs))
+	return allLogs, nil
+}
+
+func saveLokiData(filename string, data []map[string]interface{}) error {
+	f, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer f.Close()
+
+	encoder := json.NewEncoder(f)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(data); err != nil {
+		return fmt.Errorf("failed to encode data: %w", err)
+	}
+
+	log.Printf("Saved %d log entries to %s", len(data), filename)
 	return nil
 }
