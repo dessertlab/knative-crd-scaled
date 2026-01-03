@@ -50,7 +50,7 @@ spec:
         args:
         - "-number-of-services=10"
         - "-requests-per-second=50"
-        - "-critical-test=true"
+        - "-critical-test=false"
         - "-sources-of-interference=5"
         - "-interfering-namespace=interference"
         - "-bucket-node=dessertw3"

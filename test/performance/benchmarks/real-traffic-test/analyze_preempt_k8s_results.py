@@ -333,11 +333,11 @@ def parse_audit_logs(file_path, services):
             
             continue
     
-    # Calculate "starts_processinfg" and "pods_created" avarages for each service
+    # Calculate timing metrics for each service
     for rtresource_name, tracking in scale_tracking.items():
-        calculate_starts_processing_mean(tracking)
-        calculate_pod_created_mean(tracking)
-        calculate_pod_started_mean(tracking)
+        calculate_timing_mean(tracking, 'starts_processing_events', 'starts_processing_mean', 'starts_processing')
+        calculate_timing_mean(tracking, 'pod_created_events', 'pod_created_mean', 'pod_created')
+        calculate_timing_mean(tracking, 'pod_started_events', 'pod_started_mean', 'pod_started')
     
     # Build result dict: service_name -> service_data
     result = {}
@@ -388,26 +388,6 @@ def is_scale_up_event(log):
         return False
     
     return True
-
-
-def extract_replica_value(request_object):
-    """
-    Extract the replica value from requestObject.
-    requestObject is a JSON patch array.
-    """
-    if not isinstance(request_object, list):
-        return None
-    
-    for operation in request_object:
-        if not isinstance(operation, dict):
-            continue
-        
-        if operation.get('op') == 'replace' and operation.get('path') == '/spec/replicas':
-            value = operation.get('value')
-            if isinstance(value, int):
-                return value
-    
-    return None
 
 
 def is_starts_processing_event(log):
@@ -555,124 +535,48 @@ def is_pod_started_event(log):
     return True
 
 
-def calculate_starts_processing_mean(tracking):
+def extract_replica_value(request_object):
     """
-    Calculate the mean time from scale-up to starts_processing.
-    Updates tracking['starts_processing_mean'].
+    Extract the replica value from requestObject.
+    requestObject is a JSON patch array.
     """
-    scale_up_events = tracking['scale_up_events']
-    starts_processing_events = tracking['starts_processing_events']
+    if not isinstance(request_object, list):
+        return None
     
-    # Check if we have events and if arrays have same length
-    if not scale_up_events or not starts_processing_events:
-        tracking['starts_processing_mean'] = None
-        return
-    
-    if len(scale_up_events) > len(starts_processing_events):
-        print(f"  Warning: {tracking['service_name']} has {len(scale_up_events)} scale-ups but {len(starts_processing_events)} starts_processing events")
-        tracking['starts_processing_mean'] = None
-        return
-    
-    # Calculate time differences
-    time_diffs = []
-
-    i = 0
-    j = 0
-    while i < len(scale_up_events) and j < len(starts_processing_events):
-        scale_up_ts = scale_up_events[i]['timestamp']
-        sp_ts = starts_processing_events[j]['timestamp']
+    for operation in request_object:
+        if not isinstance(operation, dict):
+            continue
         
-        if sp_ts >= scale_up_ts:
-            # Calculate time difference in milliseconds
-            time_diff_ns = sp_ts - scale_up_ts
-            time_diff_ms = time_diff_ns / 1_000_000  # Convert nanoseconds to milliseconds
-            time_diffs.append(time_diff_ms)
-            i += 1
-            j += 1
-        else:
-            j += 1  # Skip this starts_processing event (it's before current scale-up)
+        if operation.get('op') == 'replace' and operation.get('path') == '/spec/replicas':
+            value = operation.get('value')
+            if isinstance(value, int):
+                return value
     
-    if not time_diffs:
-        print(f"  Warning: {tracking['service_name']} - No valid starts_processing events found after scale-ups")
-        tracking['starts_processing_mean'] = None
-        return
-    
-    if i < len(scale_up_events):
-        print(f"  Warning: {tracking['service_name']} - Only matched {len(time_diffs)}/{len(scale_up_events)} scale-ups")
-    
-    # Calculate mean
-    mean_time = sum(time_diffs) / len(time_diffs)
-    tracking['starts_processing_mean'] = f"{mean_time:.2f}ms"
-    print(f"  Mean starts_processing time for {tracking['service_name']}: {mean_time:.2f}ms (from {len(time_diffs)} scale-ups)")
+    return None
 
 
-def calculate_pod_created_mean(tracking):
+def calculate_timing_mean(tracking, events_key, mean_key, event_label):
     """
-    Calculate the mean time from scale-up to all pods created.
-    Updates tracking['pod_created_mean'].
+    Calculate the mean time from scale-up to a specific event type.
+    Generic function used for starts_processing, pod_created, and pod_started.
+    
+    Args:
+        tracking: The tracking dictionary for a service
+        events_key: Key for the events array (e.g., 'starts_processing_events')
+        mean_key: Key for the mean result (e.g., 'starts_processing_mean')
+        event_label: Human-readable label for logging (e.g., 'starts_processing')
     """
     scale_up_events = tracking['scale_up_events']
-    pod_created_events = tracking['pod_created_events']
+    events = tracking[events_key]
     
     # Check if we have events
-    if not scale_up_events or not pod_created_events:
-        tracking['pod_created_mean'] = None
+    if not scale_up_events or not events:
+        tracking[mean_key] = None
         return
     
-    if len(scale_up_events) > len(pod_created_events):
-        print(f"  Warning: {tracking['service_name']} has {len(scale_up_events)} scale-ups but {len(pod_created_events)} pod_created events")
-        tracking['pod_created_mean'] = None
-        return
-    
-    # Calculate time differences
-    time_diffs = []
-
-    i = 0
-    j = 0
-    while i < len(scale_up_events) and j < len(pod_created_events):
-        scale_up_ts = scale_up_events[i]['timestamp']
-        pc_ts = pod_created_events[j]['timestamp']
-        
-        if pc_ts >= scale_up_ts:
-            # Calculate time difference in milliseconds
-            time_diff_ns = pc_ts - scale_up_ts
-            time_diff_ms = time_diff_ns / 1_000_000  # Convert nanoseconds to milliseconds
-            time_diffs.append(time_diff_ms)
-            i += 1
-            j += 1
-        else:
-            j += 1  # Skip this pod_created event (it's before current scale-up)
-    
-    if not time_diffs:
-        print(f"  Warning: {tracking['service_name']} - No valid pod_created events found after scale-ups")
-        tracking['pod_created_mean'] = None
-        return
-    
-    if i < len(scale_up_events):
-        print(f"  Warning: {tracking['service_name']} - Only matched {len(time_diffs)}/{len(scale_up_events)} scale-ups")
-    
-    # Calculate mean
-    mean_time = sum(time_diffs) / len(time_diffs)
-    tracking['pod_created_mean'] = f"{mean_time:.2f}ms"
-    print(f"  Mean pod_created time for {tracking['service_name']}: {mean_time:.2f}ms (from {len(time_diffs)} scale-ups)")
-
-
-def calculate_pod_started_mean(tracking):
-    """
-    Calculate the mean time from scale-up to all pods started.
-    Updates tracking['pod_started_mean'].
-    """
-    scale_up_events = tracking['scale_up_events']
-    pod_started_events = tracking['pod_started_events']
-    
-    # Check if we have events
-    if not scale_up_events or not pod_started_events:
-        tracking['pod_started_mean'] = None
-        return
-    
-    if len(scale_up_events) > len(pod_started_events):
-        print(f"  Warning: {tracking['service_name']} has {len(scale_up_events)} scale-ups but {len(pod_started_events)} pod_started events")
-        tracking['pod_started_mean'] = None
+    if len(scale_up_events) > len(events):
+        print(f"  Warning: {tracking['service_name']} has {len(scale_up_events)} scale-ups but {len(events)} {event_label} events")
+        tracking[mean_key] = None
         return
     
     # Calculate time differences
@@ -680,23 +584,23 @@ def calculate_pod_started_mean(tracking):
 
     i = 0
     j = 0
-    while i < len(scale_up_events) and j < len(pod_started_events):
+    while i < len(scale_up_events) and j < len(events):
         scale_up_ts = scale_up_events[i]['timestamp']
-        ps_ts = pod_started_events[j]['timestamp']
+        event_ts = events[j]['timestamp']
         
-        if ps_ts >= scale_up_ts:
+        if event_ts >= scale_up_ts:
             # Calculate time difference in milliseconds
-            time_diff_ns = ps_ts - scale_up_ts
+            time_diff_ns = event_ts - scale_up_ts
             time_diff_ms = time_diff_ns / 1_000_000  # Convert nanoseconds to milliseconds
             time_diffs.append(time_diff_ms)
             i += 1
             j += 1
         else:
-            j += 1  # Skip this pod_started event (it's before current scale-up)
+            j += 1  # Skip this event (it's before current scale-up)
     
     if not time_diffs:
-        print(f"  Warning: {tracking['service_name']} - No valid pod_started events found after scale-ups")
-        tracking['pod_started_mean'] = None
+        print(f"  Warning: {tracking['service_name']} - No valid {event_label} events found after scale-ups")
+        tracking[mean_key] = None
         return
     
     if i < len(scale_up_events):
@@ -704,8 +608,8 @@ def calculate_pod_started_mean(tracking):
     
     # Calculate mean
     mean_time = sum(time_diffs) / len(time_diffs)
-    tracking['pod_started_mean'] = f"{mean_time:.2f}ms"
-    print(f"  Mean pod_started time for {tracking['service_name']}: {mean_time:.2f}ms (from {len(time_diffs)} scale-ups)")
+    tracking[mean_key] = f"{mean_time:.2f}ms"
+    print(f"  Mean {event_label} time for {tracking['service_name']}: {mean_time:.2f}ms (from {len(time_diffs)} scale-ups)")
 
 
 def main():

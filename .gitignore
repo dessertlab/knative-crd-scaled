@@ -19,3 +19,6 @@ default-domain
 queue
 schema-tweak
 webhook
+
+# Python virtual environments
+.venv
