@@ -159,8 +159,9 @@ func main() {
 	}
 	defer cleanup()
 
-	log.Print("Waiting for services to scale to zero")
-	time.Sleep(70 * time.Second)
+	log.Print("Waiting for services to scale to zero and to scrape out initial logs")
+	time.Sleep(100 * time.Second)
+	testStartTime := time.Now()
 
 	// We start interference routines
 	interferenceCtx, cancelInterference := context.WithCancel(ctx)
@@ -208,7 +209,6 @@ func main() {
 	// Send configured RPS round-robin over all services,
 	// while the request timeout is based on the max delays + 20 seconds
 	log.Printf("Starting vegeta attack for with %v RPS for duration: %v", *rps, duration)
-	testStartTime := time.Now()
 	rate := vegeta.Rate{Freq: *rps, Per: time.Second}
 	attacker := vegeta.NewAttacker(vegeta.Timeout(maxLatency + maxStartupLatency + 20*time.Second))
 	targeter := vegeta.NewStaticTargeter(targets...)
@@ -252,10 +252,10 @@ LOOP:
 		metrics.Close()
 	}
 
+	testEndTime := time.Now()
+
 	log.Print("Waiting for logs to be published to Loki")
 	time.Sleep(30 * time.Second)
-
-	testEndTime := time.Now()
 
 	// We stop interference routines
 	log.Print("Stopping interference routines")
@@ -486,7 +486,7 @@ func runRTResourceInterferenceRoutine(ctx context.Context, dynamicClient dynamic
 					"spec": map[string]interface{}{
 						"namespace":   interferingNamespace,
 						"replicas":    1,
-						"criticality": strconv.Itoa(*numberOfServices + 1),
+						"criticality": *numberOfServices + 1,
 						"selector": map[string]interface{}{
 							"matchLabels": map[string]interface{}{
 								"app-selector": fmt.Sprintf("interfering-app-%d", id),
@@ -533,7 +533,7 @@ func runRTResourceInterferenceRoutine(ctx context.Context, dynamicClient dynamic
 
 			// We create and delete the RTResource in a loop to create interference
 
-			//Creation step
+			// Creation step
 			log.Printf("Interference %d: Creating RTResource", id)
 			_, err := dynamicClient.Resource(rtResourceGVR).Namespace(*interferingNamespace).Create(
 				ctx, rtResource, metav1.CreateOptions{})
@@ -542,6 +542,9 @@ func runRTResourceInterferenceRoutine(ctx context.Context, dynamicClient dynamic
 			} else {
 				log.Printf("Interference %d: RTResource created", id)
 			}
+
+			// Wait 10s before deletion
+			time.Sleep(10 * time.Second)
 
 			// Deletetion step
 			log.Printf("Interference %d: Deleting RTResource", id)
@@ -552,6 +555,9 @@ func runRTResourceInterferenceRoutine(ctx context.Context, dynamicClient dynamic
 			} else {
 				log.Printf("Interference %d: RTResource deleted", id)
 			}
+
+			// Wait 10s before new interfering cycle
+			time.Sleep(10 * time.Second)
 		}
 	}
 }
@@ -631,7 +637,7 @@ func runDeploymentInterferenceRoutine(ctx context.Context, dynamicClient dynamic
 
 			// We create and delete the Deployment in a loop to create interference
 
-			//Creation step
+			// Creation step
 			log.Printf("Interference %d: Creating Deployment", id)
 			_, err := dynamicClient.Resource(deploymentGVR).Namespace(*interferingNamespace).Create(
 				ctx, deployment, metav1.CreateOptions{})
@@ -640,6 +646,9 @@ func runDeploymentInterferenceRoutine(ctx context.Context, dynamicClient dynamic
 			} else {
 				log.Printf("Interference %d: Deployment created", id)
 			}
+
+			// Wait 10s before deletion
+			time.Sleep(10 * time.Second)
 
 			// Deletetion step
 			log.Printf("Interference %d: Deleting Deployment", id)
@@ -650,6 +659,9 @@ func runDeploymentInterferenceRoutine(ctx context.Context, dynamicClient dynamic
 			} else {
 				log.Printf("Interference %d: Deployment deleted", id)
 			}
+
+			// Wait 10s before new interfering cycle
+			time.Sleep(10 * time.Second)
 		}
 	}
 }
@@ -676,6 +688,10 @@ func saveVegetaResults(outputFile string, metricResults *vegeta.Metrics, service
 	fmt.Fprintf(f, "Max Startup Latency: %s\n", maxStartupLatency)
 	fmt.Fprintf(f, "Min Payload Size (bytes): %d\n", minPayloadSizeBytes)
 	fmt.Fprintf(f, "Max Payload Size (bytes): %d\n", maxPayloadSizeBytes)
+	fmt.Fprintf(f, "Critical Test: %v\n", *criticalTest)
+	fmt.Fprintf(f, "Sources of Interference: %d\n", *sourcesOfInterference)
+	fmt.Fprintf(f, "Interfering Namespace: %s\n", *interferingNamespace)
+	fmt.Fprintf(f, "Bucket Node: %s\n", *bucketNode)
 	fmt.Fprintf(f, "\n")
 	fmt.Fprintf(f, "\n")
 
@@ -728,9 +744,10 @@ func queryLokiLogs(ctx context.Context, startTime, endTime time.Time) ([]map[str
 
 	params := url.Values{}
 	params.Set("query", logQLQuery)
-	params.Set("start", strconv.FormatInt(startTime.Unix(), 10))
-	params.Set("end", strconv.FormatInt(endTime.Unix(), 10))
-	params.Set("limit", "10000")
+	params.Set("start", strconv.FormatInt(startTime.UnixNano(), 10))
+	params.Set("end", strconv.FormatInt(endTime.UnixNano(), 10))
+	params.Set("limit", "5000")
+	params.Set("direction", "forward")
 
 	fullURL := fmt.Sprintf("%s?%s", queryURL, params.Encode())
 
