@@ -3,7 +3,6 @@ import sys
 import csv
 import re
 import json
-from pathlib import Path
 
 
 def process_directory(dir_path):
@@ -48,8 +47,8 @@ def process_directory(dir_path):
         service_data = scale_up_counts.get(service_name, {})
         service['scale_up_number'] = service_data.get('scale_up_number', 0)
         service['starts_processing'] = service_data.get('starts_processing_mean', '')
-        service['pods_created'] = ''  # To be implemented
-        service['pods_started'] = ''  # To be implemented
+        service['pods_created'] = service_data.get('pod_created_mean', '')
+        service['pods_started'] = service_data.get('pod_started_mean', '')
     
     # Write CSV
     with open(csv_output_path, 'w', newline='') as csvfile:
@@ -142,7 +141,15 @@ def parse_audit_logs(file_path, services):
             # Array of starts_processing events with timestamps
             # and the total average of "starts_processing" events timings
             'starts_processing_events': [],
-            'starts_processing_mean': None
+            'starts_processing_mean': None,
+            # Array of pod_created events with timestamps
+            # and the total average of "pod_created" events timings
+            'pod_created_events': [],
+            'pod_created_mean': None,
+            # Array of pod_started events with timestamps
+            # and the total average of "pod_started" events timings
+            'pod_started_events': [],
+            'pod_started_mean': None
         }
     
     print(f"  Analyzing {len(audit_data)} audit log entries...")
@@ -207,6 +214,8 @@ def parse_audit_logs(file_path, services):
                     'timestamp': timestamp,
                     'replicas': new_replicas,
                     'scaled_by': new_replicas - old_scale,
+                    'observed_scale': 0,
+                    'observed_startup': 0,
                     'used_for_starts_processing': False,
                     'used_for_pods_created': False,
                     'used_for_pods_started': False
@@ -249,10 +258,86 @@ def parse_audit_logs(file_path, services):
             print(f"  Starts-processing detected for {tracking['service_name']} (desiredReplicas: {desired_replicas})")
 
             continue
+        
+        # Check if this is a pod creation event
+        if is_pod_created_event(log):
+            # Extract rtresource_name from requestObject labels
+            request_object = log.get('requestObject', {})
+            metadata = request_object.get('metadata', {})
+            labels = metadata.get('labels', {})
+            rtresource_name = labels.get('rtresource_name', '')
+            
+            if rtresource_name not in scale_tracking:
+                continue
+            
+            tracking = scale_tracking[rtresource_name]
+            
+            # Find the first unused scale-up event for pods_created
+            matching_scale_up = None
+            for scale_up_event in tracking['scale_up_events']:
+                if not scale_up_event['used_for_pods_created']:
+                    matching_scale_up = scale_up_event
+                    break
+            
+            if matching_scale_up is None or matching_scale_up['observed_scale'] >= matching_scale_up['scaled_by']:
+                print(f"  Skipping pod creation for {tracking['service_name']}: no unused scale-up found")
+                continue
+            
+            # Increment observed_scale
+            matching_scale_up['observed_scale'] += 1
+            print(f"  Pod created for {tracking['service_name']}: observed_scale={matching_scale_up['observed_scale']}/{matching_scale_up['scaled_by']}")
+            
+            # Check if all pods for this scale-up have been created
+            if matching_scale_up['observed_scale'] == matching_scale_up['scaled_by']:
+                matching_scale_up['used_for_pods_created'] = True
+                timestamp = int(entry.get('timestamp', '0'))
+                tracking['pod_created_events'].append({'timestamp': timestamp})
+                print(f"  All pods created for {tracking['service_name']} scale-up (replicas: {matching_scale_up['replicas']})")
+            
+            continue
+        
+        # Check if this is a pod started event
+        if is_pod_started_event(log):
+            # Extract rtresource_name from responseObject metadata labels
+            response_object = log.get('responseObject', {})
+            metadata = response_object.get('metadata', {})
+            labels = metadata.get('labels', {})
+            rtresource_name = labels.get('rtresource_name', '')
+            
+            if rtresource_name not in scale_tracking:
+                continue
+            
+            tracking = scale_tracking[rtresource_name]
+            
+            # Find the first unused scale-up event for pods_started
+            matching_scale_up = None
+            for scale_up_event in tracking['scale_up_events']:
+                if not scale_up_event['used_for_pods_started']:
+                    matching_scale_up = scale_up_event
+                    break
+            
+            if matching_scale_up is None or matching_scale_up['observed_startup'] >= matching_scale_up['scaled_by']:
+                print(f"  Skipping pod startup for {tracking['service_name']}: no unused scale-up found")
+                continue
+            
+            # Increment observed_startup
+            matching_scale_up['observed_startup'] += 1
+            print(f"  Pod started for {tracking['service_name']}: observed_startup={matching_scale_up['observed_startup']}/{matching_scale_up['scaled_by']}")
+            
+            # Check if all pods for this scale-up have been started
+            if matching_scale_up['observed_startup'] == matching_scale_up['scaled_by']:
+                matching_scale_up['used_for_pods_started'] = True
+                timestamp = int(entry.get('timestamp', '0'))
+                tracking['pod_started_events'].append({'timestamp': timestamp})
+                print(f"  All pods started for {tracking['service_name']} scale-up (replicas: {matching_scale_up['replicas']})")
+            
+            continue
     
-    # Calculate "starts_processinfg" avarages for each service
+    # Calculate "starts_processinfg" and "pods_created" avarages for each service
     for rtresource_name, tracking in scale_tracking.items():
         calculate_starts_processing_mean(tracking)
+        calculate_pod_created_mean(tracking)
+        calculate_pod_started_mean(tracking)
     
     # Build result dict: service_name -> service_data
     result = {}
@@ -260,7 +345,9 @@ def parse_audit_logs(file_path, services):
         service_name = tracking['service_name']
         result[service_name] = {
             'scale_up_number': tracking['scale_up_number'],
-            'starts_processing_mean': tracking['starts_processing_mean']
+            'starts_processing_mean': tracking['starts_processing_mean'],
+            'pod_created_mean': tracking['pod_created_mean'],
+            'pod_started_mean': tracking['pod_started_mean']
         }
     
     return result
@@ -385,6 +472,89 @@ def is_starts_processing_event(log):
     return True
 
 
+def is_pod_created_event(log):
+    """
+    Check if a log entry represents a pod creation event.
+    """
+    # Check verb
+    if log.get('verb') != 'create':
+        return False
+    
+    # Check user
+    user = log.get('user', {})
+    if user.get('username') != 'system:serviceaccount:realtime:preempt-k8s':
+        return False
+    
+    # Check objectRef
+    object_ref = log.get('objectRef', {})
+    if object_ref.get('resource') != 'pods':
+        return False
+    if object_ref.get('namespace') != 'default':
+        return False
+    if object_ref.get('apiVersion') != 'v1':
+        return False
+    
+    # Check response status
+    response_status = log.get('responseStatus', {})
+    if response_status.get('code') != 201:
+        return False
+    
+    return True
+
+
+def is_pod_started_event(log):
+    """
+    Check if a log entry represents a pod started event (kubelet patch).
+    """
+    # Check verb
+    if log.get('verb') != 'patch':
+        return False
+    
+    # Check userAgent (kubelet)
+    user_agent = log.get('userAgent', '')
+    if not user_agent.startswith('kubelet/'):
+        return False
+    
+    # Check objectRef
+    object_ref = log.get('objectRef', {})
+    if object_ref.get('resource') != 'pods':
+        return False
+    if object_ref.get('namespace') != 'default':
+        return False
+    if object_ref.get('apiVersion') != 'v1':
+        return False
+    if object_ref.get('subresource') != 'status':
+        return False
+    
+    # Check response status
+    response_status = log.get('responseStatus', {})
+    if response_status.get('code') != 200:
+        return False
+    
+    # Check responseObject for Running phase and all conditions True
+    response_object = log.get('responseObject', {})
+    status = response_object.get('status', {})
+    
+    if status.get('phase') != 'Running':
+        return False
+    
+    conditions = status.get('conditions', [])
+    required_conditions = ['PodReadyToStartContainers', 'Initialized', 'Ready', 'ContainersReady', 'PodScheduled']
+    
+    conditions_status = {}
+    for condition in conditions:
+        cond_type = condition.get('type')
+        if cond_type in required_conditions:
+            conditions_status[cond_type] = condition.get('status')
+    
+    # Verify all required conditions are True
+    for req_cond in required_conditions:
+        if conditions_status.get(req_cond) != 'True':
+            return False
+    
+    return True
+
+
 def calculate_starts_processing_mean(tracking):
     """
     Calculate the mean time from scale-up to starts_processing.
@@ -434,6 +604,108 @@ def calculate_starts_processing_mean(tracking):
     mean_time = sum(time_diffs) / len(time_diffs)
     tracking['starts_processing_mean'] = f"{mean_time:.2f}ms"
     print(f"  Mean starts_processing time for {tracking['service_name']}: {mean_time:.2f}ms (from {len(time_diffs)} scale-ups)")
+
+
+def calculate_pod_created_mean(tracking):
+    """
+    Calculate the mean time from scale-up to all pods created.
+    Updates tracking['pod_created_mean'].
+    """
+    scale_up_events = tracking['scale_up_events']
+    pod_created_events = tracking['pod_created_events']
+    
+    # Check if we have events
+    if not scale_up_events or not pod_created_events:
+        tracking['pod_created_mean'] = None
+        return
+    
+    if len(scale_up_events) > len(pod_created_events):
+        print(f"  Warning: {tracking['service_name']} has {len(scale_up_events)} scale-ups but {len(pod_created_events)} pod_created events")
+        tracking['pod_created_mean'] = None
+        return
+    
+    # Calculate time differences
+    time_diffs = []
+
+    i = 0
+    j = 0
+    while i < len(scale_up_events) and j < len(pod_created_events):
+        scale_up_ts = scale_up_events[i]['timestamp']
+        pc_ts = pod_created_events[j]['timestamp']
+        
+        if pc_ts >= scale_up_ts:
+            # Calculate time difference in milliseconds
+            time_diff_ns = pc_ts - scale_up_ts
+            time_diff_ms = time_diff_ns / 1_000_000  # Convert nanoseconds to milliseconds
+            time_diffs.append(time_diff_ms)
+            i += 1
+            j += 1
+        else:
+            j += 1  # Skip this pod_created event (it's before current scale-up)
+    
+    if not time_diffs:
+        print(f"  Warning: {tracking['service_name']} - No valid pod_created events found after scale-ups")
+        tracking['pod_created_mean'] = None
+        return
+    
+    if i < len(scale_up_events):
+        print(f"  Warning: {tracking['service_name']} - Only matched {len(time_diffs)}/{len(scale_up_events)} scale-ups")
+    
+    # Calculate mean
+    mean_time = sum(time_diffs) / len(time_diffs)
+    tracking['pod_created_mean'] = f"{mean_time:.2f}ms"
+    print(f"  Mean pod_created time for {tracking['service_name']}: {mean_time:.2f}ms (from {len(time_diffs)} scale-ups)")
+
+
+def calculate_pod_started_mean(tracking):
+    """
+    Calculate the mean time from scale-up to all pods started.
+    Updates tracking['pod_started_mean'].
+    """
+    scale_up_events = tracking['scale_up_events']
+    pod_started_events = tracking['pod_started_events']
+    
+    # Check if we have events
+    if not scale_up_events or not pod_started_events:
+        tracking['pod_started_mean'] = None
+        return
+    
+    if len(scale_up_events) > len(pod_started_events):
+        print(f"  Warning: {tracking['service_name']} has {len(scale_up_events)} scale-ups but {len(pod_started_events)} pod_started events")
+        tracking['pod_started_mean'] = None
+        return
+    
+    # Calculate time differences
+    time_diffs = []
+
+    i = 0
+    j = 0
+    while i < len(scale_up_events) and j < len(pod_started_events):
+        scale_up_ts = scale_up_events[i]['timestamp']
+        ps_ts = pod_started_events[j]['timestamp']
+        
+        if ps_ts >= scale_up_ts:
+            # Calculate time difference in milliseconds
+            time_diff_ns = ps_ts - scale_up_ts
+            time_diff_ms = time_diff_ns / 1_000_000  # Convert nanoseconds to milliseconds
+            time_diffs.append(time_diff_ms)
+            i += 1
+            j += 1
+        else:
+            j += 1  # Skip this pod_started event (it's before current scale-up)
+    
+    if not time_diffs:
+        print(f"  Warning: {tracking['service_name']} - No valid pod_started events found after scale-ups")
+        tracking['pod_started_mean'] = None
+        return
+    
+    if i < len(scale_up_events):
+        print(f"  Warning: {tracking['service_name']} - Only matched {len(time_diffs)}/{len(scale_up_events)} scale-ups")
+    
+    # Calculate mean
+    mean_time = sum(time_diffs) / len(time_diffs)
+    tracking['pod_started_mean'] = f"{mean_time:.2f}ms"
+    print(f"  Mean pod_started time for {tracking['service_name']}: {mean_time:.2f}ms (from {len(time_diffs)} scale-ups)")
 
 
 def main():
