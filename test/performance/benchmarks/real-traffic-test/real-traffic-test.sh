@@ -134,7 +134,7 @@ for i in $(seq 1 "$ITERATIONS"); do
                 kubectl get rtresources -n interference
             fi
         elif [[ "$TEST_TYPE" == "Deployment" ]]; then
-            REMAINING_RESOURCES_INTERFERENCE=$(kubectl get deployment -n interference --no-headers 2>/dev/null | grep "^perftest" | wc -l)
+            REMAINING_RESOURCES_INTERFERENCE=$(kubectl get deployment -n interference --no-headers 2>/dev/null | { grep "^perftest" || true; } | wc -l)
             
             if [[ "$REMAINING_RESOURCES_INTERFERENCE" -ne 0 ]]; then
                 echo "Warning: Found $REMAINING_RESOURCES_INTERFERENCE deployment(s) still present in interference namespace" >&2
@@ -145,8 +145,8 @@ for i in $(seq 1 "$ITERATIONS"); do
         # Verify cleanup in default namespace based on test type
         if [[ "$TEST_TYPE" == "RTResource" ]]; then
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Verifying cleanup in default namespace (perftest RTResources)..."
-            REMAINING_PODS_DEFAULT=$(kubectl get pods -n default --no-headers 2>/dev/null | grep "^perftest" | wc -l)
-            REMAINING_RESOURCES_DEFAULT=$(kubectl get rtresources -n default --no-headers 2>/dev/null | grep "^perftest" | wc -l)
+            REMAINING_PODS_DEFAULT=$(kubectl get pods -n default --no-headers 2>/dev/null | { grep "^perftest" || true; } | wc -l)
+            REMAINING_RESOURCES_DEFAULT=$(kubectl get rtresources -n default --no-headers 2>/dev/null | { grep "^perftest" || true; } | wc -l)
             
             if [[ "$REMAINING_PODS_DEFAULT" -ne 0 ]]; then
                 echo "Warning: Found $REMAINING_PODS_DEFAULT perftest pod(s) still running in default namespace" >&2
@@ -159,8 +159,8 @@ for i in $(seq 1 "$ITERATIONS"); do
             fi
         elif [[ "$TEST_TYPE" == "Deployment" ]]; then
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Verifying cleanup in default namespace (perftest Deployments)..."
-            REMAINING_PODS_DEFAULT=$(kubectl get pods -n default --no-headers 2>/dev/null | grep "^perftest" | wc -l)
-            REMAINING_RESOURCES_DEFAULT=$(kubectl get deployment -n default --no-headers 2>/dev/null | grep "^perftest" | wc -l)
+            REMAINING_PODS_DEFAULT=$(kubectl get pods -n default --no-headers 2>/dev/null | { grep "^perftest" || true; } | wc -l)
+            REMAINING_RESOURCES_DEFAULT=$(kubectl get deployment -n default --no-headers 2>/dev/null | { grep "^perftest" || true; } | wc -l)
             
             if [[ "$REMAINING_PODS_DEFAULT" -ne 0 ]]; then
                 echo "Warning: Found $REMAINING_PODS_DEFAULT perftest pod(s) still running in default namespace" >&2
@@ -182,13 +182,13 @@ for i in $(seq 1 "$ITERATIONS"); do
         
         if [[ "$REMAINING_RESOURCES_DEFAULT" -eq 0 ]] && [[ "$REMAINING_PODS_DEFAULT" -ne 0 ]]; then
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Resources deleted but perftest pods remain in default namespace, force deleting pods..."
-            kubectl get pods -n default --no-headers 2>/dev/null | grep "^perftest" | awk '{print $1}' | xargs -r kubectl delete pod -n default --force --grace-period=0 2>/dev/null || true
+            kubectl get pods -n default --no-headers 2>/dev/null | { grep "^perftest" || true; } | awk '{print $1}' | xargs -r kubectl delete pod -n default --force --grace-period=0 2>/dev/null || true
             sleep 5
         fi
 
         # Re-check remaining pods in both namespaces
         REMAINING_PODS_INTERFERENCE=$(kubectl get pods -n interference --no-headers 2>/dev/null | wc -l)
-        REMAINING_PODS_DEFAULT=$(kubectl get pods -n default --no-headers 2>/dev/null | grep "^perftest" | wc -l)
+        REMAINING_PODS_DEFAULT=$(kubectl get pods -n default --no-headers 2>/dev/null | { grep "^perftest" || true; } | wc -l)
 
         # Check if cleanup was successful
         if [[ "$REMAINING_PODS_INTERFERENCE" -eq 0 ]] && [[ "$REMAINING_RESOURCES_INTERFERENCE" -eq 0 ]] && \
