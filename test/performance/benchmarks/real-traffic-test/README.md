@@ -1,0 +1,1 @@
+kubectl patch configmap config-features -n knative-serving --type merge -p '{"data":{"kubernetes.podspec-affinity":"Enabled"}}'

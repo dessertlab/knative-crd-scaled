@@ -99,19 +99,19 @@ for i in $(seq 1 "$ITERATIONS"); do
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Test completed! Deleting job..."
     kubectl delete -f "$REAL_TRAFFIC_TEST_MANIFEST"
 
-    # Cleanup with retry logic (max 3 attempts)
+    # Cleanup with retry logic (max 5 attempts)
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting cleanup process..."
     CLEANUP_SUCCESS=false
-    for attempt in 1 2 3; do
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleaning up resources (attempt $attempt/3)..."
+    for attempt in 1 2 3 4 5; do
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleaning up resources (attempt $attempt/5)..."
         
         # Delete resources based on test type
         if [[ "$TEST_TYPE" == "RTResource" ]]; then
             kubectl delete --all rtresources -n default --ignore-not-found=true
             kubectl delete --all rtresources -n interference --ignore-not-found=true
         elif [[ "$TEST_TYPE" == "Deployment" ]]; then
-            kubectl delete deployment -n default -l "app=perftest" --ignore-not-found=true
-            kubectl delete deployment -n interference -l "app=perftest" --ignore-not-found=true
+            kubectl get deployment -n default -o name | { grep "^perftest" || true; } | xargs -r kubectl delete -n default --ignore-not-found=true
+            kubectl delete --all deployments -n interference --ignore-not-found=true
         fi
 
         # Wait a moment for resources to be deleted
@@ -197,7 +197,7 @@ for i in $(seq 1 "$ITERATIONS"); do
             CLEANUP_SUCCESS=true
             break
         else
-            if [[ $attempt -lt 3 ]]; then
+            if [[ $attempt -lt 5 ]]; then
                 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cleanup incomplete, retrying..."
                 sleep 5
             fi
@@ -205,7 +205,7 @@ for i in $(seq 1 "$ITERATIONS"); do
     done
 
     if [[ "$CLEANUP_SUCCESS" == false ]]; then
-        echo "Error: Failed to clean up namespaces after 3 attempts" >&2
+        echo "Error: Failed to clean up namespaces after 5 attempts" >&2
         exit 1
     fi
 

@@ -46,7 +46,7 @@ spec:
       containers:
       - name: load-test
         # image: ko://knative.dev/serving/test/performance/benchmarks/real-traffic-test
-        image: docker.io/dessertunina/real-traffic-test@sha256:16d4c8eda46038cb7a4d21834197eca0d4b29a8b306ac1de89b0e8f3fd13f325
+        image: docker.io/dessertunina/real-traffic-test@sha256:cb00b25469076679aa52107d5e3cbe3ea1583c4c8c68a9eec82fe95417188232
         args:
         - "-number-of-services=10"
         - "-requests-per-second=50"

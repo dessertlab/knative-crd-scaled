@@ -49,6 +49,7 @@ import (
 	"knative.dev/serving/pkg/apis/autoscaling"
 	"knative.dev/serving/pkg/apis/config"
 	"knative.dev/serving/pkg/apis/serving"
+	v1 "knative.dev/serving/pkg/apis/serving/v1"
 	ktest "knative.dev/serving/pkg/testing/v1"
 	"knative.dev/serving/test"
 	v1test "knative.dev/serving/test/v1"
@@ -348,6 +349,26 @@ func createServices(clients *test.Clients, count int) ([]*serviceConfig, func(),
 			},
 		}),
 		ktest.WithServiceLabel(netapi.VisibilityLabelKey, serving.VisibilityClusterLocal),
+		// Add anti-affinity to avoid scheduling on the interference node
+		func(s *v1.Service) {
+			s.Spec.Template.Spec.Affinity = &corev1.Affinity{
+				NodeAffinity: &corev1.NodeAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+						NodeSelectorTerms: []corev1.NodeSelectorTerm{
+							{
+								MatchExpressions: []corev1.NodeSelectorRequirement{
+									{
+										Key:      "kubernetes.io/hostname",
+										Operator: corev1.NodeSelectorOpNotIn,
+										Values:   []string{*bucketNode},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+		},
 	}
 
 	g := errgroup.Group{}
