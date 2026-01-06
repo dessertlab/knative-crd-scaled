@@ -20,5 +20,5 @@ queue
 schema-tweak
 webhook
 
-# Python virtual environments
-.venv
+# results of test runs
+test/performance/benchmarks/real-traffic-test/results
