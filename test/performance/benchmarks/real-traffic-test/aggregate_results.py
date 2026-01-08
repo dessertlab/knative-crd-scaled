@@ -39,7 +39,7 @@ def aggregate_results(base_path):
         return
     
     # Find all results.csv files in subdirectories
-    csv_files = list(base_path.rglob('*/results.csv'))
+    csv_files = list(base_path.rglob('*/*.csv'))
     
     if not csv_files:
         print("No results.csv files found in subdirectories", file=sys.stderr)
