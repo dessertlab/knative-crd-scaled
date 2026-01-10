@@ -81,13 +81,14 @@ const (
 )
 
 var (
-	numberOfServices      = flag.Int("number-of-services", 10, "The number of Knative Services to create")
-	rps                   = flag.Int("requests-per-second", 300, "The number of requests per second to send")
-	criticalTest          = flag.Bool("critical-test", false, "Whether this is a critical test or not")
-	sourcesOfInterference = flag.Int("sources-of-interference", 10, "The number of sources of interference to create")
-	interferingNamespace  = flag.String("interfering-namespace", "realtime", "The namespace where interfering resources are created")
-	bucketNode            = flag.String("bucket-node", "dessertw3", "The node where interfering resources are scheduled")
-	lokiURL               = flag.String("loki-url", "http://loki.observability.svc.cluster.local:3100", "Loki endpoint URL")
+	numberOfServices             = flag.Int("number-of-services", 10, "The number of Knative Services to create")
+	rps                          = flag.Int("requests-per-second", 300, "The number of requests per second to send")
+	criticalTest                 = flag.Bool("critical-test", false, "Whether this is a critical test or not")
+	sourcesOfInterference        = flag.Int("sources-of-interference", 10, "The number of sources of interference to create")
+	interferingNamespace         = flag.String("interfering-namespace", "realtime", "The namespace where interfering resources are created")
+	timeBetweenInterferingBursts = flag.Int("time-between-interfering-bursts", 0, "The time to wait between bursts of interference creation/deletion events (in milliseconds)")
+	bucketNode                   = flag.String("bucket-node", "dessertw3", "The node where interfering resources are scheduled")
+	lokiURL                      = flag.String("loki-url", "http://loki.observability.svc.cluster.local:3100", "Loki endpoint URL")
 )
 
 type serviceConfig struct {
@@ -564,8 +565,10 @@ func runRTResourceInterferenceRoutine(ctx context.Context, dynamicClient dynamic
 				log.Printf("Interference %d: RTResource created", id)
 			}
 
-			// Wait 10s before deletion
-			time.Sleep(10 * time.Second)
+			if *timeBetweenInterferingBursts > 0 {
+				// Wait configured time before deletion
+				time.Sleep(time.Duration(*timeBetweenInterferingBursts) * time.Millisecond)
+			}
 
 			// Deletetion step
 			log.Printf("Interference %d: Deleting RTResource", id)
@@ -577,8 +580,10 @@ func runRTResourceInterferenceRoutine(ctx context.Context, dynamicClient dynamic
 				log.Printf("Interference %d: RTResource deleted", id)
 			}
 
-			// Wait 10s before new interfering cycle
-			time.Sleep(10 * time.Second)
+			if *timeBetweenInterferingBursts > 0 {
+				// Wait configured time before deletion
+				time.Sleep(time.Duration(*timeBetweenInterferingBursts) * time.Millisecond)
+			}
 		}
 	}
 }
@@ -668,8 +673,10 @@ func runDeploymentInterferenceRoutine(ctx context.Context, dynamicClient dynamic
 				log.Printf("Interference %d: Deployment created", id)
 			}
 
-			// Wait 10s before deletion
-			time.Sleep(10 * time.Second)
+			if *timeBetweenInterferingBursts > 0 {
+				// Wait configured time before deletion
+				time.Sleep(time.Duration(*timeBetweenInterferingBursts) * time.Millisecond)
+			}
 
 			// Deletetion step
 			log.Printf("Interference %d: Deleting Deployment", id)
@@ -681,8 +688,10 @@ func runDeploymentInterferenceRoutine(ctx context.Context, dynamicClient dynamic
 				log.Printf("Interference %d: Deployment deleted", id)
 			}
 
-			// Wait 10s before new interfering cycle
-			time.Sleep(10 * time.Second)
+			if *timeBetweenInterferingBursts > 0 {
+				// Wait configured time before deletion
+				time.Sleep(time.Duration(*timeBetweenInterferingBursts) * time.Millisecond)
+			}
 		}
 	}
 }
