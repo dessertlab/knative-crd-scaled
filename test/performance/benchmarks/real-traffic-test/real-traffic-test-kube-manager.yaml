@@ -51,9 +51,9 @@ spec:
         - "-number-of-services=10"
         - "-requests-per-second=50"
         - "-critical-test=false"
-        - "-sources-of-interference=10"
+        - "-sources-of-interference=20"
         - "-interfering-namespace=interference"
-        - "-time-between-interfering-bursts=1000"
+        - "-time-between-interfering-bursts=10000"
         - "-bucket-node=dessertw3"
         - "-loki-url=http://10.244.1.55:3100"
         env:
