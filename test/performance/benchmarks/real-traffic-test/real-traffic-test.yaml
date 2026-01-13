@@ -45,8 +45,7 @@ spec:
       serviceAccountName: loader
       containers:
       - name: load-test
-        # image: ko://knative.dev/serving/test/performance/benchmarks/real-traffic-test
-        image: docker.io/dessertunina/real-traffic-test@sha256:aafb7fbcd908d8ea4cdf541292235859b5b8dba02f97d7806e7a822967ef7600
+        image: ko://knative.dev/serving/test/performance/benchmarks/real-traffic-test
         args:
         - "-number-of-services=10"
         - "-requests-per-second=50"
