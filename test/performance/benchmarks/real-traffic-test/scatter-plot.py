@@ -544,21 +544,23 @@ def parse_audit_logs(file_path, services, mode):
     return service_events
 
 
-def create_scatter_plot(service_events, output_path, mode):
+def create_scatter_plot(all_experiment_events, output_path, mode, service_name, experiments_per_band=10):
     """
-    Create a scatter plot with services on Y-axis and time on X-axis.
+    Create a scatter plot with experiment bands on Y-axis and time on X-axis.
     
     Args:
-        service_events: Dictionary mapping service_name to list of events
+        all_experiment_events: List of tuples (experiment_index, events_list)
         output_path: Path to save the plot
         mode: 'kube' or 'preempt'
+        service_name: Name of the monitored service
+        experiments_per_band: Number of experiments to group in each band
     """
-    # Define colors for each event type
+    # Define bright colors for each event type (optimized for dark background)
     colors = {
-        'scale-up': '#3498db',              # Blue
-        'starts_processing': '#e74c3c',     # Red
-        'pod_created': '#f39c12',           # Orange
-        'pod_started': '#2ecc71',           # Green
+        'scale-up': '#00D9FF',              # Cyan bright
+        'starts_processing': '#FF3366',     # Pink/Red bright
+        'pod_created': '#FFB800',           # Orange bright
+        'pod_started': '#00FF7F',           # Spring green bright
     }
     
     # Define markers for each event type
@@ -569,93 +571,148 @@ def create_scatter_plot(service_events, output_path, mode):
         'pod_started': '^'         # Triangle
     }
     
-    # Prepare data for plotting
-    service_names = list(service_events.keys())
+    total_experiments = len(all_experiment_events)
+    num_bands = (total_experiments + experiments_per_band - 1) // experiments_per_band
     
-    # Create figure with larger size
-    fig, ax = plt.subplots(figsize=(16, max(8, len(service_names) * 0.5)))
+    # Create figure with dark style
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(16, max(8, num_bands * 1.5)))
     
-    # Plot events for each service
-    for i, service_name in enumerate(service_names):
-        events = service_events[service_name]
+    # Set black background with slight gloss
+    fig.patch.set_facecolor('#000000')
+    ax.set_facecolor('#0A0A0A')
+    
+    import numpy as np
+    
+    # Plot events for each experiment
+    for exp_idx, events in all_experiment_events:
+        # Determine which band this experiment belongs to
+        band_idx = exp_idx // experiments_per_band
+        
+        # Calculate Y position within the band
+        # Band ranges from band_idx to band_idx+1
+        # Position experiment uniformly within the band with spacing
+        position_in_band = exp_idx % experiments_per_band
+        # Add padding (0.1 at top and bottom of band) and distribute uniformly
+        band_height = 0.8  # Use 80% of band height
+        band_offset = 0.1  # Start 10% from bottom
+        y_base = band_idx + band_offset + (position_in_band + 0.5) * (band_height / experiments_per_band)
         
         # Group events by type
         events_by_type = {}
         for event in events:
             event_type = event['type']
+            # For kube-manager, merge pod_created into starts_processing since they're identical
+            if mode == 'kube' and event_type == 'pod_created':
+                event_type = 'starts_processing'
+            
             if event_type not in events_by_type:
                 events_by_type[event_type] = []
             events_by_type[event_type].append(event['timestamp'])
         
         # Plot each event type
         for event_type, timestamps in events_by_type.items():
-            y_values = [i] * len(timestamps)
+            # Add very small vertical spread to separate exact overlaps
+            y_jitter = np.random.uniform(-0.01, 0.01, len(timestamps))
+            y_values = [y_base + j for j in y_jitter]
+            
             ax.scatter(
                 timestamps, 
                 y_values, 
                 c=colors[event_type], 
                 marker=markers[event_type],
                 s=100,
-                alpha=0.7,
-                edgecolors='black',
-                linewidth=0.5,
-                label=event_type if i == 0 else "",
+                alpha=0.9,
+                edgecolors='white',
+                linewidth=0.7,
                 zorder=3
             )
     
-    # Configure axes
-    ax.set_xlabel('Time (milliseconds)', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Service', fontsize=12, fontweight='bold')
-    ax.set_yticks(range(len(service_names)))
-    ax.set_yticklabels(service_names, fontsize=9)
+    # Configure axes with light colors for visibility
+    ax.set_xlabel('Time (milliseconds)', fontsize=12, fontweight='bold', color='white')
+    ax.set_ylabel('Experiment Bands', fontsize=12, fontweight='bold', color='white')
     
-    # Add horizontal grid lines for each service
-    for i in range(len(service_names)):
-        ax.axhline(y=i, color='gray', linestyle='--', alpha=0.3, linewidth=0.5, zorder=1)
+    # Set Y-axis ticks and labels for bands
+    band_ticks = [i + 0.5 for i in range(num_bands)]
+    band_labels = []
+    for i in range(num_bands):
+        start_exp = i * experiments_per_band + 1
+        end_exp = min((i + 1) * experiments_per_band, total_experiments)
+        if start_exp == end_exp:
+            band_labels.append(f"Exp {start_exp}")
+        else:
+            band_labels.append(f"Exp {start_exp}-{end_exp}")
     
-    # Add vertical grid
-    ax.grid(True, axis='x', alpha=0.3, linestyle='--', linewidth=0.5, zorder=1)
+    ax.set_yticks(band_ticks)
+    ax.set_yticklabels(band_labels, fontsize=9, color='white')
+    ax.set_ylim(-0.1, num_bands + 0.1)
     
-    # Set title
+    # Customize tick colors
+    ax.tick_params(axis='x', colors='white')
+    ax.tick_params(axis='y', colors='white')
+    
+    # Add horizontal grid lines for each band (lighter for visibility)
+    for i in range(num_bands + 1):
+        ax.axhline(y=i, color='#444444', linestyle='--', alpha=0.5, linewidth=1, zorder=1)
+    
+    # Add vertical grid (subtle)
+    ax.grid(True, axis='x', alpha=0.3, linestyle='--', linewidth=0.5, color='#555555', zorder=1)
+    
+    # Set title with white color
     mode_title = "Kube Manager" if mode == 'kube' else "Preempt-K8s"
-    ax.set_title(f'Event Timeline - {mode_title}', fontsize=14, fontweight='bold', pad=20)
+    ax.set_title(f'Event Timeline - {mode_title} - Service: {service_name}\n({total_experiments} experiments)', 
+                 fontsize=14, fontweight='bold', pad=20, color='white')
     
-    # Create legend
-    legend_elements = [
-        mpatches.Patch(color=colors['scale-up'], label='Scale-up'),
-    ]
-    if mode == 'preempt':
-        legend_elements.append(mpatches.Patch(color=colors['starts_processing'], label='Starts Processing'))
-    legend_elements.extend([
-        mpatches.Patch(color=colors['pod_created'], label='Pod Created'),
-        mpatches.Patch(color=colors['pod_started'], label='Pod Started')
-    ])
+    # Create legend with bright colors
+    if mode == 'kube':
+        # For kube-manager, starts_processing and pod_created are merged
+        legend_elements = [
+            mpatches.Patch(color=colors['scale-up'], label='Scale-up'),
+            mpatches.Patch(color=colors['starts_processing'], label='Starts Processing / Pod Created'),
+            mpatches.Patch(color=colors['pod_started'], label='Pod Started')
+        ]
+    else:
+        # For preempt-k8s, show all event types separately
+        legend_elements = [
+            mpatches.Patch(color=colors['scale-up'], label='Scale-up'),
+            mpatches.Patch(color=colors['starts_processing'], label='Starts Processing'),
+            mpatches.Patch(color=colors['pod_created'], label='Pod Created'),
+            mpatches.Patch(color=colors['pod_started'], label='Pod Started')
+        ]
     
-    ax.legend(
+    legend = ax.legend(
         handles=legend_elements,
         loc='upper right',
         fontsize=10,
-        framealpha=0.9,
-        edgecolor='black'
+        framealpha=0.95,
+        edgecolor='white',
+        facecolor='#1A1A1A'
     )
+    
+    # Set legend text color
+    for text in legend.get_texts():
+        text.set_color('white')
     
     # Adjust layout
     plt.tight_layout()
     
     # Save plot
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='#000000')
     plt.close()
+    
+    # Reset style to default for next plots
+    plt.style.use('default')
     
     print(f"\nScatter plot saved to: {output_path}")
 
 
 def main():
     if len(sys.argv) != 3:
-        print("Usage: python scatter-plot.py <path_to_directory> <mode>")
-        print("Example: python scatter-plot.py ./results/run-1 kube-manager")
+        print("Usage: python scatter-plot.py <path_to_parent_directory> <mode>")
+        print("Example: python scatter-plot.py ./results/kube-manager/10_seconds-20_interfering kube-manager")
         sys.exit(1)
     
-    dir_path = sys.argv[1]
+    parent_dir = sys.argv[1]
     mode = sys.argv[2]  # 'kube-manager' or 'preempt-k8s'
     
     # Normalize mode to 'kube' or 'preempt'
@@ -664,39 +721,73 @@ def main():
     elif mode == 'preempt-k8s':
         mode = 'preempt'
     
-    if not os.path.isdir(dir_path):
-        print(f"Error: {dir_path} is not a valid directory")
+    if not os.path.isdir(parent_dir):
+        print(f"Error: {parent_dir} is not a valid directory")
         sys.exit(1)
     
-    # Check for required files
-    vegeta_file = os.path.join(dir_path, "vegeta_metrics.txt")
-    audit_file = os.path.join(dir_path, "audit_logs.json")
+    print(f"Scanning subdirectories in: {parent_dir}")
     
-    if not os.path.exists(vegeta_file):
-        print(f"Error: {vegeta_file} not found")
+    # Find all subdirectories with audit_logs.json and vegeta_metrics.txt
+    experiment_dirs = []
+    for entry in sorted(os.listdir(parent_dir)):
+        subdir_path = os.path.join(parent_dir, entry)
+        if os.path.isdir(subdir_path):
+            vegeta_file = os.path.join(subdir_path, "vegeta_metrics.txt")
+            audit_file = os.path.join(subdir_path, "audit_logs.json")
+            
+            if os.path.exists(vegeta_file) and os.path.exists(audit_file):
+                experiment_dirs.append(subdir_path)
+    
+    if not experiment_dirs:
+        print("Error: No valid experiment directories found")
         sys.exit(1)
     
-    if not os.path.exists(audit_file):
-        print(f"Error: {audit_file} not found")
-        sys.exit(1)
+    print(f"Found {len(experiment_dirs)} experiment directories")
     
-    print(f"Processing directory: {dir_path}")
-    
-    # Parse vegeta metrics to get service names
-    services = parse_vegeta_metrics(vegeta_file)
+    # Get service name from first experiment
+    first_vegeta = os.path.join(experiment_dirs[0], "vegeta_metrics.txt")
+    services = parse_vegeta_metrics(first_vegeta)
     
     if not services:
-        print("Error: No services found in vegeta_metrics.txt")
+        print("Error: No services found in first experiment")
         sys.exit(1)
     
-    print(f"Found {len(services)} services: {', '.join(services)}")
+    monitored_service = services[0]
+    print(f"Monitoring service: {monitored_service}")
     
-    # Parse audit logs and extract events
-    service_events = parse_audit_logs(audit_file, services, mode)
+    # Collect events from all experiments for the monitored service
+    all_experiment_events = []
+    
+    for exp_idx, exp_dir in enumerate(experiment_dirs):
+        print(f"\nProcessing experiment {exp_idx + 1}/{len(experiment_dirs)}: {os.path.basename(exp_dir)}")
+        
+        vegeta_file = os.path.join(exp_dir, "vegeta_metrics.txt")
+        audit_file = os.path.join(exp_dir, "audit_logs.json")
+        
+        # Parse vegeta metrics to get all services
+        services = parse_vegeta_metrics(vegeta_file)
+        
+        # Parse audit logs and extract events
+        service_events = parse_audit_logs(audit_file, services, mode)
+        
+        # Get events only for the monitored service
+        if monitored_service in service_events:
+            events = service_events[monitored_service]
+            if events:
+                all_experiment_events.append((exp_idx, events))
+                print(f"  Collected {len(events)} events for {monitored_service}")
+        else:
+            print(f"  Warning: {monitored_service} not found in experiment")
+    
+    if not all_experiment_events:
+        print("\nError: No events collected from any experiment")
+        sys.exit(1)
+    
+    print(f"\nTotal experiments with events: {len(all_experiment_events)}")
     
     # Create scatter plot
-    output_path = os.path.join(dir_path, f"scatter-plot.png")
-    create_scatter_plot(service_events, output_path, mode)
+    output_path = os.path.join(parent_dir, f"scatter-plot-{monitored_service}.png")
+    create_scatter_plot(all_experiment_events, output_path, mode, monitored_service, experiments_per_band=5)
     
     print("\nDone!")
 
