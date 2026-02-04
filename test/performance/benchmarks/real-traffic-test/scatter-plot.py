@@ -135,7 +135,7 @@ def is_starts_processing_event(log):
     if not (progressing_true and ready_false):
         return False
     
-    if not (progressing_true and ready_false):
+    if progressing_transition_time is None or ready_transition_time is None:
         return False
     
     if progressing_transition_time != ready_transition_time:
@@ -602,9 +602,6 @@ def create_scatter_plot(all_experiment_events, output_path, mode, service_name, 
         events_by_type = {}
         for event in events:
             event_type = event['type']
-            # For kube-manager, merge pod_created into starts_processing since they're identical
-            if mode == 'kube' and event_type == 'pod_created':
-                event_type = 'starts_processing'
             
             if event_type not in events_by_type:
                 events_by_type[event_type] = []
@@ -664,21 +661,12 @@ def create_scatter_plot(all_experiment_events, output_path, mode, service_name, 
                  fontsize=14, fontweight='bold', pad=20, color='white')
     
     # Create legend with bright colors
-    if mode == 'kube':
-        # For kube-manager, starts_processing and pod_created are merged
-        legend_elements = [
-            mpatches.Patch(color=colors['scale-up'], label='Scale-up'),
-            mpatches.Patch(color=colors['starts_processing'], label='Starts Processing / Pod Created'),
-            mpatches.Patch(color=colors['pod_started'], label='Pod Started')
-        ]
-    else:
-        # For preempt-k8s, show all event types separately
-        legend_elements = [
-            mpatches.Patch(color=colors['scale-up'], label='Scale-up'),
-            mpatches.Patch(color=colors['starts_processing'], label='Starts Processing'),
-            mpatches.Patch(color=colors['pod_created'], label='Pod Created'),
-            mpatches.Patch(color=colors['pod_started'], label='Pod Started')
-        ]
+    legend_elements = [
+        mpatches.Patch(color=colors['scale-up'], label='Scale-up'),
+        mpatches.Patch(color=colors['starts_processing'], label='Starts Processing'),
+        mpatches.Patch(color=colors['pod_created'], label='Pod Created'),
+        mpatches.Patch(color=colors['pod_started'], label='Pod Started')
+    ]
     
     legend = ax.legend(
         handles=legend_elements,
