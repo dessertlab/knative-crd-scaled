@@ -576,13 +576,21 @@ def create_scatter_plot(all_experiment_events, output_path, mode, service_name, 
     
     # Create figure with dark style
     plt.style.use('dark_background')
-    fig, ax = plt.subplots(figsize=(16, max(8, num_bands * 1.5)))
+    fig, ax = plt.subplots(figsize=(16, max(8, num_bands * 2.5)))
     
     # Set black background with slight gloss
     fig.patch.set_facecolor('#000000')
     ax.set_facecolor('#0A0A0A')
     
     import numpy as np
+    
+    # Store points by event type and experiment for connecting lines
+    points_by_type_and_exp = {
+        'scale-up': [],
+        'starts_processing': [],
+        'pod_created': [],
+        'pod_started': []
+    }
     
     # Plot events for each experiment
     for exp_idx, events in all_experiment_events:
@@ -607,11 +615,22 @@ def create_scatter_plot(all_experiment_events, output_path, mode, service_name, 
                 events_by_type[event_type] = []
             events_by_type[event_type].append(event['timestamp'])
         
-        # Plot each event type
+        # Plot each event type and store points per experiment
+        exp_points_by_type = {
+            'scale-up': [],
+            'starts_processing': [],
+            'pod_created': [],
+            'pod_started': []
+        }
+        
         for event_type, timestamps in events_by_type.items():
             # Add very small vertical spread to separate exact overlaps
             y_jitter = np.random.uniform(-0.01, 0.01, len(timestamps))
             y_values = [y_base + j for j in y_jitter]
+            
+            # Store points for this experiment
+            for t, y in zip(timestamps, y_values):
+                exp_points_by_type[event_type].append((t, y))
             
             ax.scatter(
                 timestamps, 
@@ -624,6 +643,57 @@ def create_scatter_plot(all_experiment_events, output_path, mode, service_name, 
                 linewidth=0.7,
                 zorder=3
             )
+        
+        # Store experiment points grouped by type
+        for event_type in points_by_type_and_exp.keys():
+            if exp_points_by_type[event_type]:
+                points_by_type_and_exp[event_type].append(exp_points_by_type[event_type])
+    
+    # Draw connecting lines for each event type
+    for event_type, experiments_points in points_by_type_and_exp.items():
+        if not experiments_points:
+            continue
+        
+        prev_last_point = None
+        
+        for exp_points in experiments_points:
+            if not exp_points:
+                continue
+            
+            # Sort points within this experiment by timestamp
+            exp_points_sorted = sorted(exp_points, key=lambda p: p[0])
+            
+            # If there's a previous experiment, connect to it with dashed line
+            if prev_last_point is not None:
+                first_point = exp_points_sorted[0]
+                # Vertical line from last point of previous exp to first point of current exp
+                ax.plot(
+                    [prev_last_point[0], first_point[0]],
+                    [prev_last_point[1], first_point[1]],
+                    color=colors[event_type],
+                    alpha=0.3,
+                    linewidth=1.5,
+                    linestyle='--',
+                    zorder=2
+                )
+            
+            # Connect points within this experiment
+            for i in range(len(exp_points_sorted) - 1):
+                x1, y1 = exp_points_sorted[i]
+                x2, y2 = exp_points_sorted[i + 1]
+                
+                ax.plot(
+                    [x1, x2],
+                    [y1, y2],
+                    color=colors[event_type],
+                    alpha=0.3,
+                    linewidth=1.5,
+                    linestyle='--',
+                    zorder=2
+                )
+            
+            # Store last point for connecting to next experiment
+            prev_last_point = exp_points_sorted[-1]
     
     # Configure axes with light colors for visibility
     ax.set_xlabel('Time (milliseconds)', fontsize=12, fontweight='bold', color='white')
