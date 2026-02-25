@@ -209,6 +209,15 @@ for i in $(seq 1 "$ITERATIONS"); do
         exit 1
     fi
 
+    # Page cache flush on all nodes to minimize the effect of caching on subsequent iterations
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Flushing page cache on all nodes..."
+
+    sync; echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
+    ssh root@192.168.100.22 "sync; echo 3 | sudo tee /proc/sys/vm/drop_caches" >/dev/null 2>&1
+    ssh root@192.168.100.23 "sync; echo 3 | sudo tee /proc/sys/vm/drop_caches" >/dev/null 2>&1
+    ssh root@192.168.100.24 "sync; echo 3 | sudo tee /proc/sys/vm/drop_caches" >/dev/null 2>&1
+    ssh root@192.168.100.53 "sync; echo 3 | sudo tee /proc/sys/vm/drop_caches" >/dev/null 2>&1
+
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Iteration $i/$ITERATIONS completed!"
     echo ""
 done

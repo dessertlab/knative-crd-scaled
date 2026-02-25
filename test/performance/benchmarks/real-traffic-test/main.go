@@ -88,6 +88,7 @@ var (
 	interferingNamespace         = flag.String("interfering-namespace", "realtime", "The namespace where interfering resources are created")
 	timeBetweenInterferingBursts = flag.Int("time-between-interfering-bursts", 0, "The time to wait between bursts of interference creation/deletion events (in milliseconds)")
 	bucketNode                   = flag.String("bucket-node", "dessertw3", "The node where interfering resources are scheduled")
+	nonFeasibleNodes             = flag.String("non-feasible-nodes", "", "Comma-separated list of nodes that should be non-feasible for the test services")
 	lokiURL                      = flag.String("loki-url", "http://loki.observability.svc.cluster.local:3100", "Loki endpoint URL")
 )
 
@@ -338,6 +339,8 @@ func createServices(clients *test.Clients, count int) ([]*serviceConfig, func(),
 		}
 	}
 
+	excludedNodes := append([]string{*bucketNode}, strings.Split(*nonFeasibleNodes, ",")...)
+
 	objs := make([]*serviceConfig, count)
 	begin := time.Now()
 	commonSos := []ktest.ServiceOption{
@@ -361,7 +364,7 @@ func createServices(clients *test.Clients, count int) ([]*serviceConfig, func(),
 									{
 										Key:      "kubernetes.io/hostname",
 										Operator: corev1.NodeSelectorOpNotIn,
-										Values:   []string{*bucketNode},
+										Values:   excludedNodes,
 									},
 								},
 							},

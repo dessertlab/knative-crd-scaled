@@ -57,8 +57,8 @@ def test(results_20, results_20_monitoring):
         print(f"\nProcessing {result_type} results:")
         print(f"  Found {len(csv_files)} CSV files")
 
-        if len(csv_files) != 30:
-            print(f"Error: Expected 30 CSV files for {result_type} results, but found {len(csv_files)}")
+        if len(csv_files) != 10:
+            print(f"Error: Expected 10 CSV files for {result_type} results, but found {len(csv_files)}")
             return
         
         # Initialize lists for each metric
@@ -100,8 +100,8 @@ def test(results_20, results_20_monitoring):
         data_no_monitoring = aggregated['no-monitoring'][metric]
         data_monitoring = aggregated['monitoring'][metric]
 
-        if len(data_no_monitoring) != 30 or len(data_monitoring) != 30:
-            print(f"Error: Expected 30 values for each metric, but got {len(data_no_monitoring)} and {len(data_monitoring)} for '{metric}'")
+        if len(data_no_monitoring) != 10 or len(data_monitoring) != 10:
+            print(f"Error: Expected 10 values for each metric, but got {len(data_no_monitoring)} and {len(data_monitoring)} for '{metric}'")
             return
         
         # Check normality of both groups using Shapiro-Wilk test

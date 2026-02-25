@@ -63,8 +63,8 @@ def aggregate_results(kube_manager_20_results, preempt_k8s_20_results_5_threads)
         print(f"\nProcessing {manager} with 20 interfering resources:")
         print(f"  Found {len(csv_files)} CSV files")
 
-        if len(csv_files) != 30:
-            print(f"Error: Expected 30 CSV files for {manager} with 20 interfering resources, but found {len(csv_files)}|")
+        if len(csv_files) != 10:
+            print(f"Error: Expected 10 CSV files for {manager} with 20 interfering resources, but found {len(csv_files)}|")
             return
         
         # Initialize lists for each metric

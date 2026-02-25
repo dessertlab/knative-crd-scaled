@@ -6,9 +6,10 @@ import re
 import statistics
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
+import numpy as np
 
 
-def save_comparative_boxplot(data_km_5, data_pk8s_5, data_km_10, data_pk8s_10, 
+def save_comparative_boxplot_old(data_km_5, data_pk8s_5, data_km_10, data_pk8s_10, 
                             data_km_20, data_pk8s_20, filename, directory):
     """
     Create a sensitivity analysis boxplot with 6 boxes (3 parameter values x 2 controllers).
@@ -36,12 +37,12 @@ def save_comparative_boxplot(data_km_5, data_pk8s_5, data_km_10, data_pk8s_10,
     
     # Create boxplot with refined styling and prominent red outliers
     bp = ax.boxplot(all_data, positions=positions, widths=0.7, patch_artist=True,
-                    boxprops=dict(linewidth=1.5),
-                    whiskerprops=dict(linewidth=1.5),
-                    capprops=dict(linewidth=1.5),
+                    boxprops=dict(linewidth=1.2),
+                    whiskerprops=dict(linewidth=1.2),
+                    capprops=dict(linewidth=1.2),
                     medianprops=dict(color='#FFFFFF', linewidth=2),
-                    flierprops=dict(marker='D', markerfacecolor='#DC143C', markersize=8, 
-                                   markeredgecolor='#8B0000', markeredgewidth=1.2, alpha=0.8))
+                    flierprops=dict(marker='D', markerfacecolor='#DC143C', markersize=6,
+                                   markeredgecolor='#8B0000', markeredgewidth=1.0, alpha=0.8))
     
     # Color boxes with professional palette - golden edges for all boxes
     for i, patch in enumerate(bp['boxes']):
@@ -86,7 +87,7 @@ def save_comparative_boxplot(data_km_5, data_pk8s_5, data_km_10, data_pk8s_10,
     from matplotlib.patches import Patch
     legend_elements = [
         Patch(facecolor=color_km, edgecolor=color_km, alpha=0.7, label='Vanilla K8s'),
-        Patch(facecolor=color_pk8s, edgecolor=color_pk8s, alpha=0.7, label='Preempt-K8s')
+        Patch(facecolor=color_pk8s, edgecolor=color_pk8s, alpha=0.7, label='Preempt-Faas')
     ]
     ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.05, 0.92),
               prop={'size': 20, 'weight': 'semibold'}, framealpha=0.95, edgecolor='gray', fancybox=True)
@@ -113,6 +114,152 @@ def save_comparative_boxplot(data_km_5, data_pk8s_5, data_km_10, data_pk8s_10,
             bbox=dict(boxstyle='round,pad=0.4', facecolor='white', edgecolor='gray', alpha=0.9, linewidth=1.5))
     
     # Save as PNG
+    plot_path_png = os.path.join(directory, filename)
+    plt.savefig(plot_path_png, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close()
+    print(f"Plot saved to: {plot_path_png}")
+
+
+def save_aggregated_boxplot(aggregated, metrics, filename, directory):
+    """
+    Create a single figure containing all metrics' boxplots.
+    - `aggregated` is the same structure produced in the script:
+      {'kube_manager': {5: {metric: [..]}, 10: {...}, 20: {...}}, 'preempt_k8s': {...}}
+    - `metrics` is a list of metric names (order used on x-axis).
+    The plot groups boxes by metric; for each metric there are 6 boxes
+    (kube_manager and preempt_k8s for loads 5,10,20). Colors represent the load.
+    """
+    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica']
+
+    # Create a vertical stack of subplots: one per metric
+    loads = [5, 10, 20]
+    managers = ['kube_manager', 'preempt_k8s']
+    manager_colors = {'kube_manager': '#42a5f5', 'preempt_k8s': '#FF8000'}
+    # Hatch patterns per manager (used also in legend)
+    manager_hatches = {'kube_manager': '///', 'preempt_k8s': 'xxx'}
+    # Hatch patterns per manager (distinct and deterministic)
+    manager_hatches = {'kube_manager': '///', 'preempt_k8s': 'xxx'}
+
+    # Wider image with three stacked plots (more horizontal than vertical)
+    fig, axes = plt.subplots(nrows=len(metrics), ncols=1, figsize=(24, 10), sharex=True, constrained_layout=False)
+    # Normalize axes into a flat list of Axes objects
+    if isinstance(axes, np.ndarray):
+        axes = axes.flatten().tolist()
+    elif not isinstance(axes, (list, tuple)):
+        axes = [axes]
+
+    # For each metric create a grouped boxplot
+    for idx, (ax, metric) in enumerate(zip(axes, metrics)):
+        # Build data order and manager sequence: for each load -> kube_manager, preempt_k8s
+        all_data = []
+        positions = [1, 2, 4, 5, 7, 8]
+        manager_seq = []
+        for load in loads:
+            for manager in managers:
+                vals = aggregated.get(manager, {}).get(load, {}).get(metric, [])
+                all_data.append(vals)
+                manager_seq.append(manager)
+
+        bp = ax.boxplot(all_data, positions=positions, widths=0.7, patch_artist=True,
+                        boxprops=dict(linewidth=1.2),
+                        whiskerprops=dict(linewidth=1.2),
+                        capprops=dict(linewidth=1.2),
+                        medianprops=dict(color='#FFFFFF', linewidth=2),
+                        flierprops=dict(marker='D', markerfacecolor='#DC143C', markersize=6,
+                                       markeredgecolor='#8B0000', markeredgewidth=1.0, alpha=0.8))
+
+        # Apply facecolor and hatch deterministically based on manager_seq
+        for patch, mgr in zip(bp['boxes'], manager_seq):
+            patch.set_facecolor(manager_colors.get(mgr, '#CCCCCC'))
+            patch.set_edgecolor('#000000')
+            hatch = manager_hatches.get(mgr, '')
+            if hatch:
+                patch.set_hatch(hatch)
+            patch.set_alpha(0.9)
+            patch.set_linewidth(1.2)
+
+        for whisker in bp['whiskers']:
+            whisker.set_color('#555555')
+            whisker.set_alpha(0.7)
+        for cap in bp['caps']:
+            cap.set_color('#555555')
+            cap.set_alpha(0.7)
+
+        # Remove x-axis ticks and labels as requested
+        ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
+
+        # Keep y-axis in seconds and style it
+        ax.tick_params(axis='y', labelsize=16)
+        for label in ax.get_yticklabels():
+            label.set_fontweight('semibold')
+        ax.set_yscale('linear')
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x/1000:.1f}'))
+
+        # Ensure zero is present on the y-axis (helps compare small values)
+        ymin, ymax = ax.get_ylim()
+        if ymin > 0:
+            ax.set_ylim(0, ymax)
+
+        # Titles per subplot with metric name
+        ax.set_title(metric.replace('_', ' ').title(), fontsize=16, fontweight='bold', pad=10)
+
+        # Set y-axis label 'Time (seconds)'. Preferably only on the second subplot,
+        # otherwise (if only one subplot) set it there.
+        try:
+            if len(metrics) >= 2:
+                if idx == 1:
+                    ax.set_ylabel('Time (seconds)', fontsize=16, fontweight='semibold', labelpad=10)
+            else:
+                ax.set_ylabel('Time (seconds)', fontsize=16, fontweight='semibold', labelpad=10)
+        except Exception:
+            # Fallback: set label on current axis if anything unexpected happens
+            ax.set_ylabel('Time (seconds)', fontsize=16, fontweight='semibold', labelpad=10)
+
+        # Vertical separators between load blocks (fixed positions)
+        ax.axvline(x=3, color='#CCCCCC', linestyle='-', linewidth=1.0, alpha=0.6)
+        ax.axvline(x=6, color='#CCCCCC', linestyle='-', linewidth=1.0, alpha=0.6)
+
+        # # Add small load markers (centered above each load block)
+        # ylim_top = ax.get_ylim()[1]
+        # load_centers = [1.5, 4.5, 7.5]
+        # for c, load in zip(load_centers, loads):
+        #     ax.text(c, ylim_top * 0.96, f'{load} int', ha='center', va='top',
+        #         fontsize=12, fontweight='bold',
+        #         bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor='gray', alpha=0.9, linewidth=0.8))
+
+        # Grid and spines
+        ax.grid(True, axis='y', linestyle='--', alpha=0.3)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+    # Create a single horizontal legend below the plots
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor=manager_colors['kube_manager'], edgecolor='black', hatch=manager_hatches.get('kube_manager', ''), label='Vanilla K8s'),
+        Patch(facecolor=manager_colors['preempt_k8s'], edgecolor='black', hatch=manager_hatches.get('preempt_k8s', ''), label='Preempt-FaaS')
+    ]
+    # place legend centered below the plots, horizontal (text in bold)
+    leg = fig.legend(handles=legend_elements, loc='lower center', ncol=2,
+               bbox_to_anchor=(0.5, -0.01), framealpha=0.95, prop={'size':15.5},
+               handlelength=3, handleheight=2, borderpad=0.8, labelspacing=0.6)
+    for t in leg.get_texts():
+        t.set_fontweight('bold')
+
+    # Reduce vertical spacing between subplots and make room for legend
+    plt.subplots_adjust(bottom=0.10, hspace=0.18)
+
+    # Add x-axis ticks with interfering-load values only on the last subplot
+    try:
+        load_centers = [1.5, 4.5, 7.5]
+        load_labels = ['5 Int', '10 Int', '20 Int']
+        last_ax = axes[-1]
+        last_ax.set_xticks(load_centers)
+        last_ax.set_xticklabels(load_labels, fontsize=15, fontweight='semibold')
+        last_ax.tick_params(axis='x', which='both', bottom=True, labelbottom=True)
+    except Exception:
+        pass
+
     plot_path_png = os.path.join(directory, filename)
     plt.savefig(plot_path_png, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
@@ -198,8 +345,8 @@ def aggregate_results(kube_manager_5_results, kube_manager_10_results, kube_mana
             print(f"\nProcessing {manager} with {interfering_num} interfering resources:")
             print(f"  Found {len(csv_files)} CSV files")
 
-            if len(csv_files) != 30:
-                print(f"Error: Expected 30 CSV files for {manager} with {interfering_num} interfering resources, but found {len(csv_files)}|")
+            if len(csv_files) != 10:
+                print(f"Error: Expected 10 CSV files for {manager} with {interfering_num} interfering resources, but found {len(csv_files)}|")
                 return
             
             # Initialize lists for each metric
@@ -233,27 +380,11 @@ def aggregate_results(kube_manager_5_results, kube_manager_10_results, kube_mana
                     print(f"Error: Failed to read {csv_file}: {e}", file=sys.stderr)
                     return
     
-    # Generate boxplots for each metric
-    print("\nGenerating boxplots...")
-    for metric in metrics:
-        data_km_5 = aggregated['kube_manager'][5][metric]
-        data_km_10 = aggregated['kube_manager'][10][metric]
-        data_km_20 = aggregated['kube_manager'][20][metric]
-        data_pk8s_5 = aggregated['preempt_k8s'][5][metric]
-        data_pk8s_10 = aggregated['preempt_k8s'][10][metric]
-        data_pk8s_20 = aggregated['preempt_k8s'][20][metric]
-        
-        # Generate the boxplot
-        # ylabel = f"{metric.replace('_', ' ').title()} Delays (ms)"
-        filename = f"sensitivity_analysis_{metric}.png"
-        
-        save_comparative_boxplot(
-            data_km_5, data_pk8s_5, 
-            data_km_10, data_pk8s_10, 
-            data_km_20, data_pk8s_20,
-            filename, str(output_path)
-        )
-    
+    # Generate a single aggregated boxplot for all metrics
+    print("\nGenerating single aggregated boxplot for all metrics...")
+    filename = "sensitivity_analysis_all_metrics.png"
+    save_aggregated_boxplot(aggregated, metrics, filename, str(output_path))
+
     print(f"\nResults saved to {output_path}")
 
 
