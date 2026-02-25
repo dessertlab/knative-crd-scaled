@@ -33,6 +33,8 @@ spec:
         app.kubernetes.io/name: knative-serving
         app.kubernetes.io/version: devel
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: dessertw1
       # To avoid node becoming SPOF, spread our replicas to different nodes.
       affinity:
         podAntiAffinity:
