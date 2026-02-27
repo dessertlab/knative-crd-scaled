@@ -9,117 +9,6 @@ from matplotlib.ticker import FuncFormatter
 import numpy as np
 
 
-def save_comparative_boxplot_old(data_km_5, data_pk8s_5, data_km_10, data_pk8s_10, 
-                            data_km_20, data_pk8s_20, filename, directory):
-    """
-    Create a sensitivity analysis boxplot with 6 boxes (3 parameter values x 2 controllers).
-    Shows how metrics vary with parameter values (5, 10, 20) for both controllers.
-    """
-    # Set professional style
-    plt.rcParams['font.family'] = 'sans-serif'
-    plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica']
-    
-    fig, ax = plt.subplots(figsize=(14, 7), constrained_layout=True)
-    
-    # Prepare data - 6 boxes grouped by parameter value
-    all_data = [data_km_5, data_pk8s_5, data_km_10, data_pk8s_10, data_km_20, data_pk8s_20]
-    positions = [1, 2, 4, 5, 7, 8]  # Grouped positions
-    
-    # Scientific colorblind-friendly palette
-    color_km = '#42a5f5'   # Blue for kube-manager
-    color_pk8s = '#FF8000'  # Orange for preempt-k8s (not too bright)
-    colors = [color_km, color_pk8s, color_km, color_pk8s, color_km, color_pk8s]
-    
-    # Add colored background for parameter groups (gradient based on interfering resources)
-    ax.axvspan(0.5, 3, facecolor='#FFE680', alpha=0.5, zorder=0)      # Yellow for 5 (low interference)
-    ax.axvspan(3, 6, facecolor='#FFB366', alpha=0.5, zorder=0)        # Orange for 10 (medium interference)
-    ax.axvspan(6, 9, facecolor='#FF8FA3', alpha=0.5, zorder=0)        # Pink for 20 (high interference)
-    
-    # Create boxplot with refined styling and prominent red outliers
-    bp = ax.boxplot(all_data, positions=positions, widths=0.7, patch_artist=True,
-                    boxprops=dict(linewidth=1.2),
-                    whiskerprops=dict(linewidth=1.2),
-                    capprops=dict(linewidth=1.2),
-                    medianprops=dict(color='#FFFFFF', linewidth=2),
-                    flierprops=dict(marker='D', markerfacecolor='#DC143C', markersize=6,
-                                   markeredgecolor='#8B0000', markeredgewidth=1.0, alpha=0.8))
-    
-    # Color boxes with professional palette - golden edges for all boxes
-    for i, patch in enumerate(bp['boxes']):
-        patch.set_facecolor(colors[i])
-        patch.set_edgecolor('#000000')  # Black edges for all boxes
-        patch.set_alpha(0.7)
-        patch.set_linewidth(2)
-    
-    # Style whiskers and caps
-    for whisker in bp['whiskers']:
-        whisker.set_color('#555555')
-        whisker.set_linestyle('-')
-        whisker.set_alpha(0.6)
-    
-    for cap in bp['caps']:
-        cap.set_color('#555555')
-        cap.set_alpha(0.6)
-    
-    # Set two-level x-axis labels
-    # ax.set_xticks(positions)
-    # labels_controller = ['Vanilla K8s', 'Preempt-K8s', 'Vanilla K8s', 'Preempt-K8s', 'Vanilla K8s', 'Preempt-K8s']
-    # ax.set_xticklabels(labels_controller, fontsize=20, fontweight='semibold')
-    
-    # Add vertical separator lines
-    ax.axvline(x=3, color='#CCCCCC', linestyle='-', linewidth=1.5, alpha=0.6)
-    ax.axvline(x=6, color='#CCCCCC', linestyle='-', linewidth=1.5, alpha=0.6)
-    
-    # Professional grid styling
-    ax.grid(True, axis='y', linestyle='--', alpha=0.3, linewidth=0.8, color='#888888')
-    ax.set_axisbelow(True)
-    
-    # Remove top and right spines (Tufte style)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_linewidth(1.2)
-    ax.spines['bottom'].set_linewidth(1.2)
-    
-    # Labels with improved typography
-    # ax.set_ylabel(ylabel, fontsize=14, fontweight='semibold', labelpad=10)
-    
-    # Add legend
-    from matplotlib.patches import Patch
-    legend_elements = [
-        Patch(facecolor=color_km, edgecolor=color_km, alpha=0.7, label='Vanilla K8s'),
-        Patch(facecolor=color_pk8s, edgecolor=color_pk8s, alpha=0.7, label='Preempt-Faas')
-    ]
-    ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.05, 0.92),
-              prop={'size': 20, 'weight': 'semibold'}, framealpha=0.95, edgecolor='gray', fancybox=True)
-    
-    # Adjust tick label sizes
-    ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False)   # Remove x-axis ticks
-    ax.tick_params(axis='y', which='major', labelsize=30)  # Set y-axis tick label size
-    for label in ax.get_yticklabels():
-        label.set_fontweight('semibold')
-    
-    # Format y-axis to divide values by 1000
-    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x/1000:.1f}'))
-    
-    # Add parameter group labels as text annotations at the top of each group
-    y_pos = ax.get_ylim()[1] * 0.98  # Near top of plot
-    ax.text(1.5, y_pos, '15', ha='center', va='top', 
-            fontsize=25, fontweight='bold',
-            bbox=dict(boxstyle='round,pad=0.4', facecolor='white', edgecolor='gray', alpha=0.9, linewidth=1.5))
-    ax.text(4.5, y_pos, '30', ha='center', va='top', 
-            fontsize=25, fontweight='bold',
-            bbox=dict(boxstyle='round,pad=0.4', facecolor='white', edgecolor='gray', alpha=0.9, linewidth=1.5))
-    ax.text(7.5, y_pos, '45', ha='center', va='top', 
-            fontsize=25, fontweight='bold',
-            bbox=dict(boxstyle='round,pad=0.4', facecolor='white', edgecolor='gray', alpha=0.9, linewidth=1.5))
-    
-    # Save as PNG
-    plot_path_png = os.path.join(directory, filename)
-    plt.savefig(plot_path_png, dpi=300, bbox_inches='tight', facecolor='white')
-    plt.close()
-    print(f"Plot saved to: {plot_path_png}")
-
-
 def save_aggregated_boxplot(aggregated, metrics, filename, directory):
     """
     Create a single figure containing all metrics' boxplots.
@@ -141,8 +30,8 @@ def save_aggregated_boxplot(aggregated, metrics, filename, directory):
     # Hatch patterns per manager (distinct and deterministic)
     manager_hatches = {'kube_manager': '///', 'preempt_k8s': 'xxx'}
 
-    # Wider image with three stacked plots (more horizontal than vertical)
-    fig, axes = plt.subplots(nrows=len(metrics), ncols=1, figsize=(24, 10), sharex=True, constrained_layout=False)
+    # Wider image with metrics laid out horizontally (each metric in its own column)
+    fig, axes = plt.subplots(nrows=1, ncols=len(metrics), figsize=(24, 6), sharey=False, constrained_layout=False)
     # Normalize axes into a flat list of Axes objects
     if isinstance(axes, np.ndarray):
         axes = axes.flatten().tolist()
@@ -161,6 +50,14 @@ def save_aggregated_boxplot(aggregated, metrics, filename, directory):
                 all_data.append(vals)
                 manager_seq.append(manager)
 
+        # calculate medians for 20-interference group and print
+        km20 = aggregated.get('kube_manager', {}).get(20, {}).get(metric, [])
+        pk20 = aggregated.get('preempt_k8s', {}).get(20, {}).get(metric, [])
+        if km20 or pk20:
+            m_km20 = np.median(km20) if km20 else float('nan')
+            m_pk20 = np.median(pk20) if pk20 else float('nan')
+            print(f"[{metric}] mediana (20) kube_manager={m_km20:.3f}, preempt_k8s={m_pk20:.3f}")
+
         bp = ax.boxplot(all_data, positions=positions, widths=0.7, patch_artist=True,
                         boxprops=dict(linewidth=1.2),
                         whiskerprops=dict(linewidth=1.2),
@@ -168,6 +65,8 @@ def save_aggregated_boxplot(aggregated, metrics, filename, directory):
                         medianprops=dict(color='#FFFFFF', linewidth=2),
                         flierprops=dict(marker='D', markerfacecolor='#DC143C', markersize=6,
                                        markeredgecolor='#8B0000', markeredgewidth=1.0, alpha=0.8))
+        
+        ax.set_xlim(0.5, 8.5)
 
         # Apply facecolor and hatch deterministically based on manager_seq
         for patch, mgr in zip(bp['boxes'], manager_seq):
@@ -187,14 +86,22 @@ def save_aggregated_boxplot(aggregated, metrics, filename, directory):
             cap.set_alpha(0.7)
 
         # Remove x-axis ticks and labels as requested
-        ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
+        ax.set_xlim(0.5, 8.5)
+        ax.set_xticks([1.5, 4.5, 7.5])
+        ax.set_xticklabels(['5 Stressload', '10 Stressload', '20 Stressload'],
+                        fontsize=15, ha='center')
+        ax.tick_params(axis='x', which='both', bottom=True, labelbottom=True)
 
         # Keep y-axis in seconds and style it
-        ax.tick_params(axis='y', labelsize=16)
+        ax.tick_params(axis='y', labelsize=30)
+        # Ensure y-tick labels are normal weight (not bold)
         for label in ax.get_yticklabels():
-            label.set_fontweight('semibold')
+            label.set_fontweight('normal')
         ax.set_yscale('linear')
-        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x/1000:.1f}'))
+        def smart_formatter(x, p):
+            val = x / 1000
+            return f'{val:.0f}' if val == int(val) else f'{val:g}'
+        ax.yaxis.set_major_formatter(FuncFormatter(smart_formatter))
 
         # Ensure zero is present on the y-axis (helps compare small values)
         ymin, ymax = ax.get_ylim()
@@ -204,17 +111,15 @@ def save_aggregated_boxplot(aggregated, metrics, filename, directory):
         # Titles per subplot with metric name
         ax.set_title(metric.replace('_', ' ').title(), fontsize=16, fontweight='bold', pad=10)
 
-        # Set y-axis label 'Time (seconds)'. Preferably only on the second subplot,
+        # Set y-axis label 'Latencies (s)'. Preferably only on the second subplot,
         # otherwise (if only one subplot) set it there.
         try:
-            if len(metrics) >= 2:
-                if idx == 1:
-                    ax.set_ylabel('Time (seconds)', fontsize=16, fontweight='semibold', labelpad=10)
-            else:
-                ax.set_ylabel('Time (seconds)', fontsize=16, fontweight='semibold', labelpad=10)
+            # Place the 'Latencies (s)' label on the first (leftmost) subplot
+            if len(metrics) >= 1 and idx == 0:
+                ax.set_ylabel('Latencies (s)', fontsize=16, fontweight='semibold', labelpad=10)
         except Exception:
             # Fallback: set label on current axis if anything unexpected happens
-            ax.set_ylabel('Time (seconds)', fontsize=16, fontweight='semibold', labelpad=10)
+            ax.set_ylabel('Latencies (s)', fontsize=16, fontweight='semibold', labelpad=10)
 
         # Vertical separators between load blocks (fixed positions)
         ax.axvline(x=3, color='#CCCCCC', linestyle='-', linewidth=1.0, alpha=0.6)
@@ -246,19 +151,8 @@ def save_aggregated_boxplot(aggregated, metrics, filename, directory):
     for t in leg.get_texts():
         t.set_fontweight('bold')
 
-    # Reduce vertical spacing between subplots and make room for legend
-    plt.subplots_adjust(bottom=0.10, hspace=0.18)
-
-    # Add x-axis ticks with interfering-load values only on the last subplot
-    try:
-        load_centers = [1.5, 4.5, 7.5]
-        load_labels = ['5 Int', '10 Int', '20 Int']
-        last_ax = axes[-1]
-        last_ax.set_xticks(load_centers)
-        last_ax.set_xticklabels(load_labels, fontsize=15, fontweight='semibold')
-        last_ax.tick_params(axis='x', which='both', bottom=True, labelbottom=True)
-    except Exception:
-        pass
+    # Reduce horizontal spacing between subplots and make room for legend
+    plt.subplots_adjust(bottom=0.20, wspace=0.18)
 
     plot_path_png = os.path.join(directory, filename)
     plt.savefig(plot_path_png, dpi=300, bbox_inches='tight', facecolor='white')
