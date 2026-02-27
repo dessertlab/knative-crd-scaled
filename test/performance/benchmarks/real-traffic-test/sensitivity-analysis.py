@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import statistics
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 import numpy as np
 
 
@@ -102,6 +102,7 @@ def save_aggregated_boxplot(aggregated, metrics, filename, directory):
             val = x / 1000
             return f'{val:.0f}' if val == int(val) else f'{val:g}'
         ax.yaxis.set_major_formatter(FuncFormatter(smart_formatter))
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=5, prune=None))
 
         # Ensure zero is present on the y-axis (helps compare small values)
         ymin, ymax = ax.get_ylim()
