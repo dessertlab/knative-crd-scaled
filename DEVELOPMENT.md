@@ -119,6 +119,29 @@ In particular, you'll need to be able to create Kubernetes cluster-scoped
 Namespace, CustomResourceDefinition, ClusterRole, and ClusterRoleBinding
 objects.
 
+### PREEMPT-FaaS setup
+
+Knative is not available by default in older versions on Kubernetes. Thus, the KUBERNETES_MIN_VERSION environment variable must be set in the following manifests: [`activator.yaml`](./config/core/deployments/activator.yaml); [`autoscaler.yaml`](./config/core/deployments/autoscaler.yaml); [`controller.yaml`](./config/core/deployments/controller.yaml); [`webhook.yaml`](./config/core/deployments/webhook.yaml).
+
+At the moment, this variable si set to `1.29.0`. If you are using an older Kubernetes version, make sure to update this variable. You can even try to comment it out if your Kubernetes version is already supported. Refer to the Knative docs for more details.
+
+In each file, this setting will appeare as follows:
+
+```yaml
+env:
+  - name: KUBERNETES_MIN_VERSION
+    value: "1.29.0"
+```
+
+The same files have also been modified to select a specifc node for deployment. Make sure to modify the following configuration for each manifest:
+
+```yaml
+nodeSelector:
+  kubernetes.io/hostname: dessertw1
+```
+
+Change the value with the name of one of your nodes. You can comment out this section if you don't want to use a specific node for deployment.
+
 ### Resource allocation for Kubernetes
 
 Please allocate sufficient resources for Kubernetes, especially when you run a
@@ -206,7 +229,7 @@ issue, for example).
 
 Knative supports a variety of Ingress solutions.
 
-For simplicity, you can just run the following command to install Kourier.
+For simplicity, you can just run the following command to install Kourier. Please pay attention to the `KUBERNETES_MIN_VERSION` in the following commands if your Kubernetes version is older than `1.29.0`.
 
 ```
 kubectl apply -f ./third_party/kourier-latest/kourier.yaml
@@ -218,7 +241,7 @@ kubectl patch configmap/config-network \
 
 kubectl set env deployment/net-kourier-controller \
   -n knative-serving \
-  KUBERNETES_MIN_VERSION=1.29.0
+  KUBERNETES_MIN_VERSION=1.29.0 # Update this value if your Kubernetes version is older than 1.29.0
 
 kubectl scale deployment 3scale-kourier-gateway \
   -n kourier-system \

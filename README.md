@@ -8,6 +8,12 @@
 [![codecov](https://codecov.io/gh/knative/serving/branch/main/graph/badge.svg)](https://codecov.io/gh/knative/serving)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/5913/badge)](https://bestpractices.coreinfrastructure.org/projects/5913)
 
+This forked respository of Knative implements a patch required to support application auto-scaling through **RTResources** instead of *standard *K8s Deployments**. Such resources are monitored by the **PREEMPT-FaaS controller**. This repository represents an extension of that project. For further information on the project, we highly recommend to visit the [PREEMPT-FaaS repository](https://github.com/dessertlab/preempt-k8s).
+
+After successfully installing PREEMPT-FaaS in your cluster, following the instructions in its repository, you can install our patched version of Knative following the instructions in [DEVELOPMENT.md](./DEVELOPMENT.md).
+
+In this repository we also developed a benchmark by modifying the [`real-traffic-test suite`](./test/performance/benchmarks/real-traffic-test/) to provide a proof-of-concept of the improved orchestration time granted by PREEMPT-FaaS, also showing evidence of the seamless integration with Knative. Before running the benchmark, make sure to check the [README](./test/performance/benchmarks/real-traffic-test/README.md) of the benchmark itself.
+
 Knative Serving builds on Kubernetes to support deploying and serving of
 applications and functions as serverless containers. Serving is easy to get
 started with and scales to support advanced scenarios.
