@@ -79,6 +79,7 @@ variable (we recommend adding it to your `.bashrc`):
 
 ```shell
 export KO_DOCKER_REPO='gcr.io/my-gcloud-project-id'
+source ~/.bashrc
 ```
 
 ### Check out your fork
