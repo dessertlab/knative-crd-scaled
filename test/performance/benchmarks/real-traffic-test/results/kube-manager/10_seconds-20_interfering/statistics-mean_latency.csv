@@ -1,0 +1,11 @@
+service_name,Mean,Min,Max,Variance,Std_Deviation
+perftest-0,118.89ms,66.51ms,172.43ms,1256.77,35.45
+perftest-1,143.41ms,34.98ms,229.89ms,3248.50,57.00
+perftest-2,185.21ms,118.60ms,278.42ms,2603.27,51.02
+perftest-3,218.17ms,165.39ms,350.05ms,3076.48,55.47
+perftest-4,220.08ms,171.78ms,330.54ms,2583.61,50.83
+perftest-5,224.26ms,143.74ms,278.25ms,1462.95,38.25
+perftest-6,265.79ms,147.95ms,354.43ms,3398.94,58.30
+perftest-7,318.92ms,256.61ms,377.47ms,1589.23,39.87
+perftest-8,326.98ms,266.83ms,412.69ms,1689.81,41.11
+perftest-9,362.55ms,256.36ms,471.08ms,4183.21,64.68

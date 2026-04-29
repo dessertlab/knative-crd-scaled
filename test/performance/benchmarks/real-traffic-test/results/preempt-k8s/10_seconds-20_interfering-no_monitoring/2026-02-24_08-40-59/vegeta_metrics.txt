@@ -1,0 +1,155 @@
+=== Real Traffic Test Results ===
+
+
+== Test Configuration ==
+
+Services: 10
+RPS: 50
+Duration: 1m0s
+Min Latency: 0s
+Max Latency: 0s
+Min Startup Latency: 0s
+Max Startup Latency: 0s
+Min Payload Size (bytes): 10000
+Max Payload Size (bytes): 10000
+Critical Test: true
+Sources of Interference: 20
+Interfering Namespace: interference
+Bucket Node: dessertw3
+
+
+== Test Results ==
+
+= Aggregated Results =
+
+Requests      [total, rate, throughput]         3000, 50.02, 50.01
+Duration      [total, attack, wait]             59.987s, 59.981s, 6.171ms
+Latencies     [min, mean, 50, 90, 95, 99, max]  5.131ms, 435.817ms, 7.217ms, 1.05s, 4.022s, 6.825s, 9.053s
+Bytes In      [total, mean]                     29136310, 9712.10
+Bytes Out     [total, mean]                     30000000, 10000.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:3000  
+Error Set:
+
+= Per-Service Results =
+
+# Service: perftest-0
+Criticality Level: 1
+
+Requests      [total, rate, throughput]         300, 5.02, 5.02
+Duration      [total, attack, wait]             59.809s, 59.801s, 8.306ms
+Latencies     [min, mean, 50, 90, 95, 99, max]  5.334ms, 270.406ms, 7.518ms, 88.312ms, 2.564s, 4.987s, 5.395s
+Bytes In      [total, mean]                     2914202, 9714.01
+Bytes Out     [total, mean]                     3000000, 10000.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:300  
+Error Set:
+
+# Service: perftest-1
+Criticality Level: 2
+
+Requests      [total, rate, throughput]         300, 5.02, 5.02
+Duration      [total, attack, wait]             59.806s, 59.8s, 6.184ms
+Latencies     [min, mean, 50, 90, 95, 99, max]  5.209ms, 504.16ms, 7.251ms, 1.681s, 4.791s, 7.119s, 7.495s
+Bytes In      [total, mean]                     2912489, 9708.30
+Bytes Out     [total, mean]                     3000000, 10000.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:300  
+Error Set:
+
+# Service: perftest-2
+Criticality Level: 3
+
+Requests      [total, rate, throughput]         300, 5.02, 5.02
+Duration      [total, attack, wait]             59.806s, 59.801s, 5.496ms
+Latencies     [min, mean, 50, 90, 95, 99, max]  5.318ms, 490.537ms, 7.146ms, 1.64s, 4.648s, 7.07s, 7.424s
+Bytes In      [total, mean]                     2913826, 9712.75
+Bytes Out     [total, mean]                     3000000, 10000.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:300  
+Error Set:
+
+# Service: perftest-3
+Criticality Level: 4
+
+Requests      [total, rate, throughput]         300, 5.02, 5.02
+Duration      [total, attack, wait]             59.806s, 59.8s, 6.18ms
+Latencies     [min, mean, 50, 90, 95, 99, max]  5.392ms, 455.486ms, 7.114ms, 1.269s, 4.315s, 6.78s, 7.017s
+Bytes In      [total, mean]                     2913387, 9711.29
+Bytes Out     [total, mean]                     3000000, 10000.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:300  
+Error Set:
+
+# Service: perftest-4
+Criticality Level: 5
+
+Requests      [total, rate, throughput]         300, 5.02, 5.02
+Duration      [total, attack, wait]             59.807s, 59.801s, 6.091ms
+Latencies     [min, mean, 50, 90, 95, 99, max]  5.131ms, 437.996ms, 7.082ms, 1.013s, 4.16s, 6.666s, 7.006s
+Bytes In      [total, mean]                     2913306, 9711.02
+Bytes Out     [total, mean]                     3000000, 10000.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:300  
+Error Set:
+
+# Service: perftest-5
+Criticality Level: 6
+
+Requests      [total, rate, throughput]         300, 5.02, 5.02
+Duration      [total, attack, wait]             59.808s, 59.801s, 7.299ms
+Latencies     [min, mean, 50, 90, 95, 99, max]  5.291ms, 725.453ms, 7.206ms, 3.259s, 6.338s, 8.641s, 9.053s
+Bytes In      [total, mean]                     2914015, 9713.38
+Bytes Out     [total, mean]                     3000000, 10000.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:300  
+Error Set:
+
+# Service: perftest-6
+Criticality Level: 7
+
+Requests      [total, rate, throughput]         300, 5.02, 5.02
+Duration      [total, attack, wait]             59.807s, 59.8s, 6.825ms
+Latencies     [min, mean, 50, 90, 95, 99, max]  5.458ms, 457.065ms, 7.268ms, 1.335s, 4.332s, 6.775s, 6.995s
+Bytes In      [total, mean]                     2913860, 9712.87
+Bytes Out     [total, mean]                     3000000, 10000.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:300  
+Error Set:
+
+# Service: perftest-7
+Criticality Level: 8
+
+Requests      [total, rate, throughput]         300, 5.02, 5.02
+Duration      [total, attack, wait]             59.808s, 59.8s, 7.915ms
+Latencies     [min, mean, 50, 90, 95, 99, max]  5.341ms, 417.703ms, 7.236ms, 1.112s, 3.791s, 6.556s, 6.842s
+Bytes In      [total, mean]                     2913109, 9710.36
+Bytes Out     [total, mean]                     3000000, 10000.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:300  
+Error Set:
+
+# Service: perftest-8
+Criticality Level: 9
+
+Requests      [total, rate, throughput]         300, 5.02, 5.02
+Duration      [total, attack, wait]             59.806s, 59.8s, 5.965ms
+Latencies     [min, mean, 50, 90, 95, 99, max]  5.268ms, 415.757ms, 7.173ms, 904.081ms, 3.934s, 6.489s, 6.767s
+Bytes In      [total, mean]                     2913627, 9712.09
+Bytes Out     [total, mean]                     3000000, 10000.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:300  
+Error Set:
+
+# Service: perftest-9
+Criticality Level: 10
+
+Requests      [total, rate, throughput]         300, 5.02, 5.02
+Duration      [total, attack, wait]             59.806s, 59.8s, 6.171ms
+Latencies     [min, mean, 50, 90, 95, 99, max]  5.258ms, 183.604ms, 7.296ms, 57.216ms, 1.534s, 3.959s, 4.474s
+Bytes In      [total, mean]                     2914489, 9714.96
+Bytes Out     [total, mean]                     3000000, 10000.00
+Success       [ratio]                           100.00%
+Status Codes  [code:count]                      200:300  
+Error Set:
+

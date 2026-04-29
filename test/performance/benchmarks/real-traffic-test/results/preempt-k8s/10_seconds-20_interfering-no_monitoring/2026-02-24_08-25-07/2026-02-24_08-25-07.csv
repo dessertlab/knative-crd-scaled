@@ -1,0 +1,11 @@
+service_name,criticality_level,mean_latency
+perftest-0,1,54.765ms
+perftest-1,2,116.538ms
+perftest-2,3,109.181ms
+perftest-3,4,175.186ms
+perftest-4,5,115.534ms
+perftest-5,6,98.226ms
+perftest-6,7,129.109ms
+perftest-7,8,103.864ms
+perftest-8,9,120.134ms
+perftest-9,10,123.907ms

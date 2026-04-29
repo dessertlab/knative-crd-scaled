@@ -1,0 +1,7 @@
+manager,metric,average,variance
+kube_manager,starts_processing,2105.0503,13318.327122233317
+kube_manager,pods_created,2172.4418,13939.358980399995
+kube_manager,pods_started,5279.5894,135893.15601182217
+preempt_k8s,starts_processing,321.4247,3785.361884455555
+preempt_k8s,pods_created,419.5493,3117.3333260111126
+preempt_k8s,pods_started,3678.7501,852775.4506794332

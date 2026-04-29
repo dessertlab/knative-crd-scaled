@@ -1,0 +1,11 @@
+service_name,criticality_level,mean_latency,scale_up_number,starts_processing,pods_created,pods_started
+perftest-0,NONE,151.865ms,3,2311.86ms,2311.86ms,5420.23ms
+perftest-1,NONE,140.884ms,2,2224.76ms,2224.76ms,4892.74ms
+perftest-2,NONE,219.999ms,3,1377.74ms,1477.54ms,5133.63ms
+perftest-3,NONE,228.869ms,4,1987.44ms,1987.44ms,5162.19ms
+perftest-4,NONE,238.893ms,3,1806.14ms,1906.69ms,4942.36ms
+perftest-5,NONE,226.855ms,3,1815.20ms,1916.45ms,5144.40ms
+perftest-6,NONE,354.43ms,4,2522.31ms,2584.98ms,6476.37ms
+perftest-7,NONE,332.688ms,4,1690.52ms,1766.03ms,4887.72ms
+perftest-8,NONE,317.245ms,4,1535.65ms,1610.28ms,5082.78ms
+perftest-9,NONE,335.371ms,4,1804.22ms,1878.26ms,5676.85ms

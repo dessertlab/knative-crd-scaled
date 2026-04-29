@@ -21,4 +21,5 @@ schema-tweak
 webhook
 
 # results of test runs
-test/performance/benchmarks/real-traffic-test/results
+# test/performance/benchmarks/real-traffic-test/results
+test/performance/benchmarks/real-traffic-test/results/old
